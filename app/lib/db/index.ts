@@ -11,10 +11,19 @@
  * module-internal helper — `requireUserId()` in auth.ts — cannot leak out
  * through a wildcard re-export.
  *
+ * - accounts.ts  Deal Desk accounts (an ownership root)
  * - auth.ts      Supabase Auth: the verified user, sign-in/up/out, recovery
- * - errors.ts    the error thrown when a table query fails
+ * - errors.ts    the errors thrown when a table query fails
  * - notespace.ts the inherited NoteSpace tables (reference material only)
  */
+
+export {
+  createAccount,
+  deleteAccount,
+  getAccount,
+  listAccounts,
+  updateAccount,
+} from './accounts'
 
 export type { AuthResult, AuthUser, EmailTokenType } from './auth'
 export {
@@ -29,7 +38,8 @@ export {
   verifyEmailToken,
 } from './auth'
 
-export { NotesDatabaseError } from './errors'
+export type { DatabaseErrorKind } from './errors'
+export { DealDeskDatabaseError, NotesDatabaseError } from './errors'
 
 export type {
   Collection,
