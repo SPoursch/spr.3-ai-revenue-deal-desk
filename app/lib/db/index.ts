@@ -12,6 +12,7 @@
  * through a wildcard re-export.
  *
  * - accounts.ts  Deal Desk accounts (an ownership root)
+ * - deals.ts     Deal Desk deals (the other ownership root)
  * - auth.ts      Supabase Auth: the verified user, sign-in/up/out, recovery
  * - errors.ts    the errors thrown when a table query fails
  * - notespace.ts the inherited NoteSpace tables (reference material only)
@@ -24,6 +25,14 @@ export {
   listAccounts,
   updateAccount,
 } from './accounts'
+
+export {
+  createDeal,
+  deleteDeal,
+  getDeal,
+  listDeals,
+  updateDeal,
+} from './deals'
 
 export type { AuthResult, AuthUser, EmailTokenType } from './auth'
 export {
