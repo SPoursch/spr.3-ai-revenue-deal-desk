@@ -15,6 +15,7 @@
  * - ai-findings.ts Deal Desk AI findings (content immutable; never Decisions)
  * - auth.ts        Supabase Auth: the verified user, sign-in/up/out, recovery
  * - deals.ts       Deal Desk deals (the other ownership root)
+ * - decisions.ts   Deal Desk human Decisions on exceptions (immutable; never AI)
  * - errors.ts      the errors thrown when a table query fails
  * - evidence.ts    Deal Desk evidence items and excerpts (immutable)
  * - exceptions.ts  Deal Desk exceptions (status is the only mutable column)
@@ -44,6 +45,13 @@ export {
   listDeals,
   updateDeal,
 } from './deals'
+
+export {
+  getDecision,
+  listDecisions,
+  listExceptionDecisions,
+  recordDecision,
+} from './decisions'
 
 export {
   createEvidenceExcerpt,
@@ -86,7 +94,11 @@ export {
 } from './auth'
 
 export type { DatabaseErrorKind } from './errors'
-export { DealDeskDatabaseError, NotesDatabaseError } from './errors'
+export {
+  DealDeskDatabaseError,
+  DecisionValidationError,
+  NotesDatabaseError,
+} from './errors'
 
 export type {
   Collection,

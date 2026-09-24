@@ -1,6 +1,7 @@
 import type { PostgrestError } from '@supabase/supabase-js'
 
 import type { Database } from '../database.types'
+import type { DecisionInputProblem } from '../deal-desk/domain'
 
 /**
  * Error thrown when Supabase reports a failure on a NoteSpace table. Wrapping
@@ -101,5 +102,28 @@ export class DealDeskDatabaseError extends Error {
     this.table = table
     this.kind = classifyPostgrestError(cause)
     this.cause = cause
+  }
+}
+
+/**
+ * Error thrown when a Decision fails validation, before anything is sent to
+ * the database.
+ *
+ * It carries the field-level problems from `validateDecisionInput`, each with
+ * a message safe to show the user, so a caller can render them next to the
+ * form fields instead of parsing the error message. Separate from
+ * `DealDeskDatabaseError` because nothing reached the database.
+ */
+export class DecisionValidationError extends Error {
+  readonly problems: readonly DecisionInputProblem[]
+
+  constructor(problems: readonly DecisionInputProblem[]) {
+    super(
+      `Decision not recorded: invalid ${problems
+        .map((problem) => problem.field)
+        .join(', ')}.`,
+    )
+    this.name = 'DecisionValidationError'
+    this.problems = problems
   }
 }

@@ -41,6 +41,7 @@ vi.mock('../../app/lib/supabase', () => ({
 
 // Imported after vi.mock is registered (vi.mock is hoisted above imports).
 import * as db from '../../app/lib/db'
+import * as aiFindingsModule from '../../app/lib/db/ai-findings'
 import {
   createAccount,
   createAiFinding,
@@ -268,7 +269,9 @@ describe('AI findings: owner (user A)', () => {
 
 describe('AI findings: never a Decision', () => {
   it('offers no function that could create or change a Decision', () => {
-    const decisionFunctions = Object.keys(db).filter((name) => /decision/i.test(name))
+    const decisionFunctions = Object.keys(aiFindingsModule).filter((name) =>
+      /decision/i.test(name),
+    )
 
     expect(decisionFunctions).toEqual([])
   })

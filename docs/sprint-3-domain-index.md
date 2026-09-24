@@ -60,7 +60,7 @@ Decision structurally impossible, not merely discouraged (see §6, Risk 3).
 | **Provision** | A commercial or legal term as it appears in a deal, such as liability cap, data residency, payment terms, auto-renewal, termination or discount. | Core |
 | **Rule** | A policy statement of what counts as standard, such as "liability cap ≥ 12 months' fees" or "discount > 20 % needs VP approval". | Core |
 | **Exception** | A detected deviation of a deal's facts or provisions from a rule, or a risk signal. | Core |
-| **Decision** | A human's recorded judgement on an exception or deal (approve, reject, escalate, accept risk, request change) with a rationale. | Core |
+| **Decision** | A human's recorded judgement on an exception or deal (approve, reject, approve with conditions, accept risk, request change, dismiss as false positive; see DECISION) with a rationale. | Core |
 | **Action** | A prepared or assigned next step: a task, a drafted email, an approval request, an escalation. | Core |
 | **Outcome** | What actually happened afterwards: signed, renewed, churned, renegotiated, and at what value. | Core |
 | **User / team member** | A person working deals: an account executive, deal desk, finance, legal. | Reused from auth; roles are new |
@@ -180,10 +180,17 @@ An exception is always `deal × rule × evidence`:
 ### DECISION — human judgement, recorded
 
 - Made by an identified human, never by the AI.
-- Types: approve, reject, approve with conditions, escalate, accept risk,
-  request change, dismiss as false positive.
+- Types: approve, reject, approve with conditions, accept risk, request
+  change, dismiss as false positive. These are exactly the canonical schema's
+  `decision_type` values, which are the source of truth. *Escalate* remains a
+  domain concept but is not a Sprint 3 Decision type: it implies approval
+  routing, which is out of scope (U1, U9; schema decision C3).
 - Carries a **rationale**, a timestamp, and the evidence or AI explanation
   that was in view.
+- **Conditions** belong to *approve with conditions* only: that type must
+  state them, and every other type must not carry any. The database enforces
+  the first half; the application enforces both, so a rejection can never be
+  recorded with what reads as approval conditions.
 - Should be immutable once recorded. A change of mind is a new decision.
 
 ### ACTION — preparing the next step

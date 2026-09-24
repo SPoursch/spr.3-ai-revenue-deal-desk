@@ -5,6 +5,7 @@ import {
   AI_FINDING_TYPES,
   DEAL_STAGES,
   DEAL_TYPES,
+  DECISION_TYPES,
   EVIDENCE_MIME_TYPES,
   EVIDENCE_SOURCE_KINDS,
   EVIDENCE_TYPES,
@@ -17,6 +18,7 @@ import {
   isAiFindingType,
   isDealStage,
   isDealType,
+  isDecisionType,
   isEvidenceMimeType,
   isEvidenceSourceKind,
   isEvidenceType,
@@ -31,6 +33,7 @@ import {
   PROVISION_SOURCES,
   PROVISION_TYPES,
   PROVISION_VALUE_UNITS,
+  validateDecisionInput,
 } from '../../app/lib/deal-desk/domain'
 
 /**
@@ -363,4 +366,159 @@ describe('exception vocabulary', () => {
       expect(isExceptionStatus(value)).toBe(false)
     },
   )
+})
+
+describe('decision vocabulary', () => {
+  it('lists exactly the decision types the database accepts', () => {
+    expect([...DECISION_TYPES]).toEqual([
+      'approve',
+      'reject',
+      'approve_with_conditions',
+      'accept_risk',
+      'request_change',
+      'dismiss_false_positive',
+    ])
+  })
+
+  it.each(DECISION_TYPES)('accepts the decision type %s', (value) => {
+    expect(isDecisionType(value)).toBe(true)
+  })
+
+  it.each(['escalate', 'Approve', 'approved', 'dismiss', '', null, undefined, 1])(
+    'rejects %j as a decision type',
+    (value) => {
+      expect(isDecisionType(value)).toBe(false)
+    },
+  )
+})
+
+describe('validateDecisionInput', () => {
+  const DEAL_ID = '3f0c6a52-1d2e-4a8b-9c3d-5e6f7a8b9c0d'
+  const EXCEPTION_ID = '7b1d2c3e-4f5a-4b6c-8d7e-9f0a1b2c3d4e'
+  const FINDING_ID = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d'
+
+  const valid = {
+    deal_id: DEAL_ID,
+    exception_id: EXCEPTION_ID,
+    decision_type: 'accept_risk',
+    rationale: 'The customer is strategic; legal has reviewed the cap.',
+  }
+
+  function problemFields(input: Parameters<typeof validateDecisionInput>[0]) {
+    const result = validateDecisionInput(input)
+    return result.ok ? [] : result.problems.map((problem) => problem.field)
+  }
+
+  it('accepts a complete Decision and trims its text', () => {
+    expect(
+      validateDecisionInput({
+        ...valid,
+        rationale: '  Strategic customer.  ',
+        considered_finding_id: ` ${FINDING_ID} `,
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        deal_id: DEAL_ID,
+        exception_id: EXCEPTION_ID,
+        decision_type: 'accept_risk',
+        rationale: 'Strategic customer.',
+        conditions: null,
+        considered_finding_id: FINDING_ID,
+      },
+    })
+  })
+
+  it('treats blank optional fields as absent', () => {
+    const result = validateDecisionInput({
+      ...valid,
+      conditions: '   ',
+      considered_finding_id: '',
+    })
+
+    expect(result.ok && result.value).toMatchObject({
+      conditions: null,
+      considered_finding_id: null,
+    })
+  })
+
+  it('drops fields it does not know, such as an owner, id or timestamp', () => {
+    const result = validateDecisionInput({
+      ...valid,
+      user_id: FINDING_ID,
+      id: FINDING_ID,
+      created_at: '2000-01-01T00:00:00Z',
+    } as Parameters<typeof validateDecisionInput>[0])
+
+    expect(result.ok && Object.keys(result.value).sort()).toEqual([
+      'conditions',
+      'considered_finding_id',
+      'deal_id',
+      'decision_type',
+      'exception_id',
+      'rationale',
+    ])
+  })
+
+  it.each(['', '   ', '\n\t', null, undefined, 42])(
+    'rejects %j as a rationale',
+    (rationale) => {
+      expect(problemFields({ ...valid, rationale })).toEqual(['rationale'])
+    },
+  )
+
+  it.each(['escalate', 'APPROVE', '', null, undefined])(
+    'rejects %j as a decision type',
+    (decisionType) => {
+      expect(problemFields({ ...valid, decision_type: decisionType })).toEqual([
+        'decision_type',
+      ])
+    },
+  )
+
+  it('requires conditions for approve_with_conditions', () => {
+    const input = { ...valid, decision_type: 'approve_with_conditions' }
+
+    expect(problemFields(input)).toEqual(['conditions'])
+    expect(problemFields({ ...input, conditions: '  ' })).toEqual(['conditions'])
+    expect(
+      validateDecisionInput({ ...input, conditions: ' Net 60 at most. ' }),
+    ).toMatchObject({ ok: true, value: { conditions: 'Net 60 at most.' } })
+  })
+
+  it.each(['approve', 'reject', 'accept_risk', 'request_change', 'dismiss_false_positive'])(
+    'refuses conditions on %s',
+    (decisionType) => {
+      expect(
+        problemFields({ ...valid, decision_type: decisionType, conditions: 'Net 60.' }),
+      ).toEqual(['conditions'])
+    },
+  )
+
+  it.each([
+    ['deal_id', ''],
+    ['deal_id', 'not-a-uuid'],
+    ['deal_id', undefined],
+    ['exception_id', ''],
+    ['exception_id', '123'],
+    ['exception_id', null],
+    ['considered_finding_id', 'finding-1'],
+  ] as const)('rejects %s = %j', (field, value) => {
+    expect(problemFields({ ...valid, [field]: value })).toEqual([field])
+  })
+
+  it('reports every problem at once, each with a message', () => {
+    const result = validateDecisionInput({})
+
+    expect(result.ok).toBe(false)
+    expect(result.ok ? [] : result.problems.map((p) => p.field)).toEqual([
+      'deal_id',
+      'exception_id',
+      'decision_type',
+      'rationale',
+    ])
+    expect(
+      result.ok ? [] : result.problems.every((p) => p.message.length > 0),
+    ).toBe(true)
+  })
 })

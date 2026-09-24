@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyPostgrestError,
   DealDeskDatabaseError,
+  DecisionValidationError,
   NotesDatabaseError,
 } from '../../app/lib/db/errors'
 
@@ -66,5 +67,23 @@ describe('DealDeskDatabaseError', () => {
     )
 
     expect(error).not.toBeInstanceOf(NotesDatabaseError)
+  })
+})
+
+describe('DecisionValidationError', () => {
+  it('carries the field-level problems, so a form need not parse the message', () => {
+    const problems = [
+      { field: 'rationale', message: 'Explain the decision.' },
+      { field: 'conditions', message: 'State the conditions of the approval.' },
+    ] as const
+    const error = new DecisionValidationError(problems)
+
+    expect(error).toBeInstanceOf(Error)
+    expect(error).not.toBeInstanceOf(DealDeskDatabaseError)
+    expect(error.name).toBe('DecisionValidationError')
+    expect(error.problems).toEqual(problems)
+    expect(error.message).toBe(
+      'Decision not recorded: invalid rationale, conditions.',
+    )
   })
 })

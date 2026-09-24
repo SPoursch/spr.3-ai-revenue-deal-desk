@@ -7,7 +7,8 @@ import type {
 
 /**
  * Deal Desk application-domain types: the two ownership roots, Accounts and
- * Deals, and the deal's evidence, provisions, AI findings and exceptions.
+ * Deals, and the deal's evidence, provisions, AI findings, exceptions and
+ * human Decisions.
  *
  * Sources of truth:
  * - Persistence: the canonical `gtm-stack-fit` schema, through the generated
@@ -732,3 +733,169 @@ export type CreateDeterministicExceptionInput = CreateExceptionBase & {
 export type CreateExceptionInput =
   | CreateAiExceptionInput
   | CreateDeterministicExceptionInput
+
+// ---------------------------------------------------------------------------
+// Decisions
+//
+// A human's recorded judgement on an exception (Domain Index §4, DECISION;
+// U9). Never created by the AI: an AI finding may be recorded as the
+// explanation that was in view (`considered_finding_id`), never as the
+// decider. Decisions are deal children without `user_id`; ownership is the
+// deal's.
+//
+// Immutable: the schema grants INSERT and SELECT only. A change of mind is a
+// new Decision, and the latest one is the one in force. Recording a Decision
+// on an exception sets that exception's status in the same transaction —
+// 'dismissed' for dismiss_false_positive, 'decided' otherwise (E5, E6).
+// ---------------------------------------------------------------------------
+
+/** The uuid of a decision. An alias for readability; not a branded type. */
+export type DecisionId = string
+
+/**
+ * What a human decided. Exactly the canonical schema's list
+ * (decisions_decision_type_check). The Domain Index also names `escalate`;
+ * it is left out of Sprint 3 because escalation implies approval routing,
+ * which is out of scope (C3, U1, U9). The schema is the source of truth here.
+ */
+export const DECISION_TYPES = [
+  'approve',
+  'reject',
+  'approve_with_conditions',
+  'accept_risk',
+  'request_change',
+  'dismiss_false_positive',
+] as const
+
+export type DecisionType = (typeof DECISION_TYPES)[number]
+
+/** Narrows an untrusted value to a DecisionType. */
+export function isDecisionType(value: unknown): value is DecisionType {
+  return (
+    typeof value === 'string' &&
+    (DECISION_TYPES as readonly string[]).includes(value)
+  )
+}
+
+/** A decision as the application sees it, with its vocabulary column narrowed. */
+export type Decision = Omit<Tables<'decisions'>, 'decision_type'> & {
+  decision_type: DecisionType
+}
+
+/**
+ * The columns of a new Decision on an exception. The exception and the
+ * considered finding, when set, must be of the same deal (composite foreign
+ * keys). `id` and `created_at` are the database's; there is no owner column
+ * to send, because ownership is the deal's.
+ */
+export type RecordExceptionDecisionInput = Pick<
+  TablesInsert<'decisions'>,
+  'deal_id' | 'rationale' | 'conditions' | 'considered_finding_id'
+> & {
+  exception_id: ExceptionId
+  decision_type: DecisionType
+}
+
+/** A field of a Decision that failed validation, with a message safe to show. */
+export type DecisionInputProblem = {
+  field: keyof RecordExceptionDecisionInput
+  message: string
+}
+
+export type DecisionInputValidation =
+  | { ok: true; value: RecordExceptionDecisionInput }
+  | { ok: false; problems: DecisionInputProblem[] }
+
+/** The canonical textual form of a uuid, in any case. */
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** A string trimmed to its content, or null when absent or blank. */
+function trimmedOrNull(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+
+  const trimmed = value.trim()
+
+  return trimmed.length > 0 ? trimmed : null
+}
+
+/**
+ * Validates a Decision before it is recorded, and returns it with its text
+ * trimmed and blank optional fields as null.
+ *
+ * The input is typed loosely because it usually comes from a form. Only the
+ * known fields are copied into the result, so anything else a caller sends —
+ * an id, a timestamp, a user id — is dropped rather than forwarded.
+ *
+ * The rules a human can break are checked here, so a form can say what is
+ * wrong: a known decision type, a rationale that is not blank, conditions
+ * required for approve_with_conditions and meaningless for any other type.
+ * Referential integrity — that the exception and finding exist and are of the
+ * deal — stays with the database.
+ */
+export function validateDecisionInput(input: {
+  [K in keyof RecordExceptionDecisionInput]?: unknown
+}): DecisionInputValidation {
+  const problems: DecisionInputProblem[] = []
+
+  const dealId = trimmedOrNull(input.deal_id)
+  if (!dealId || !UUID_PATTERN.test(dealId)) {
+    problems.push({ field: 'deal_id', message: 'The deal is missing.' })
+  }
+
+  const exceptionId = trimmedOrNull(input.exception_id)
+  if (!exceptionId || !UUID_PATTERN.test(exceptionId)) {
+    problems.push({ field: 'exception_id', message: 'The exception is missing.' })
+  }
+
+  const decisionType = input.decision_type
+  if (!isDecisionType(decisionType)) {
+    problems.push({ field: 'decision_type', message: 'Choose a decision.' })
+  }
+
+  const rationale = trimmedOrNull(input.rationale)
+  if (!rationale) {
+    problems.push({ field: 'rationale', message: 'Explain the decision.' })
+  }
+
+  const conditions = trimmedOrNull(input.conditions)
+  if (decisionType === 'approve_with_conditions' && !conditions) {
+    problems.push({
+      field: 'conditions',
+      message: 'State the conditions of the approval.',
+    })
+  } else if (
+    isDecisionType(decisionType) &&
+    decisionType !== 'approve_with_conditions' &&
+    conditions
+  ) {
+    problems.push({
+      field: 'conditions',
+      message: 'Conditions apply only to an approval with conditions.',
+    })
+  }
+
+  const consideredFindingId = trimmedOrNull(input.considered_finding_id)
+  if (consideredFindingId && !UUID_PATTERN.test(consideredFindingId)) {
+    problems.push({
+      field: 'considered_finding_id',
+      message: 'The AI finding reference is not valid.',
+    })
+  }
+
+  if (problems.length > 0) {
+    return { ok: false, problems }
+  }
+
+  return {
+    ok: true,
+    value: {
+      deal_id: dealId!,
+      exception_id: exceptionId!,
+      decision_type: decisionType as DecisionType,
+      rationale: rationale!,
+      conditions,
+      considered_finding_id: consideredFindingId,
+    },
+  }
+}

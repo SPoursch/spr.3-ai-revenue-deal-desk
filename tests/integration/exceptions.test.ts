@@ -26,9 +26,9 @@ import {
  * (deal, rule_key). `source_finding_id` is `on delete no action` (E10);
  * `provision_id` is `on delete set null`.
  *
- * `decided` and `dismissed` are set by recording a Decision (E5, E6), which is
- * out of scope here. The database would accept them from a plain status
- * update; the application layer refuses to send them.
+ * `decided` and `dismissed` are set by recording a Decision (E5, E6), which
+ * tests/integration/decisions.test.ts covers. The database would accept them
+ * from a plain status update; this module refuses to send them.
  *
  * Test data: account and deal names start with this run's RUN_PREFIX.
  * `afterAll` deletes this run's accounts for each user and the database
@@ -48,6 +48,7 @@ vi.mock('../../app/lib/supabase', () => ({
 
 // Imported after vi.mock is registered (vi.mock is hoisted above imports).
 import * as db from '../../app/lib/db'
+import * as exceptionsModule from '../../app/lib/db/exceptions'
 import {
   createAccount,
   createAiFinding,
@@ -333,7 +334,9 @@ describe('exceptions: decided and dismissed are reserved for Decisions', () => {
   })
 
   it('offers no function that could create or change a Decision', () => {
-    expect(Object.keys(db).filter((name) => /decision/i.test(name))).toEqual([])
+    expect(
+      Object.keys(exceptionsModule).filter((name) => /decision/i.test(name)),
+    ).toEqual([])
   })
 })
 
@@ -623,8 +626,8 @@ describe('exceptions: provisions and rules', () => {
   it('allows a new exception for a rule once the live one is resolved', async () => {
     const live = await createAsA(deterministic(deal, 'resolved_rule'))
     // Resolution is normally a Decision (E5, E6). The database also accepts a
-    // plain status update, used here directly because Decisions are out of
-    // scope; the application layer never sends it.
+    // plain status update, used here directly to keep this test independent
+    // of the decisions module; the application layer never sends it.
     const { error } = await userA.client
       .from('exceptions')
       .update({ status: 'dismissed' })
