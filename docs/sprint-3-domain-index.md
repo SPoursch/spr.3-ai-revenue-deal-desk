@@ -249,10 +249,10 @@ over time. Decided: confirmed provisions are stored as facts (§8, U4).
 
 ### A. Reusable NoteSpace infrastructure (keep as-is)
 
-- **Single data-access module.** `app/lib/db.ts` is the only code that calls
-  `supabase-js`, and `app/lib/supabase.ts` is imported only by it (and by
-  `proxy.ts` for session refresh). Deal, evidence and retrieval queries go in
-  there too, or in a `db/` folder that keeps the same one-module rule.
+- **Single data-access module.** The `app/lib/db/` folder, imported as
+  `app/lib/db`, is the only code that calls `supabase-js`, and
+  `app/lib/supabase.ts` is imported only by it (and by `proxy.ts` for session
+  refresh). Deal, evidence and retrieval queries go there too.
 - **Per-request SSR client** using the publishable key only, never cached
   across requests.
 - **Identity:** `getAuthenticatedUser()` verifies the session with
@@ -314,7 +314,7 @@ over time. Decided: confirmed provisions are stored as facts (§8, U4).
   model metadata.
 - A server-only AI module: the provider key in a server-only environment
   variable, one module that is the only caller of the model (mirroring
-  `db.ts`), prompt-injection handling for evidence text.
+  `app/lib/db`), prompt-injection handling for evidence text.
 - Roles (account executive, deal desk, finance, legal) and approval authority
   *(inferred)*.
 
