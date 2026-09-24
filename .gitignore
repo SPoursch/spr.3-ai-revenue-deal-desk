@@ -54,3 +54,7 @@ next-env.d.ts
 # .claude/skills/ holds symlinks the installer creates for Claude Code, whose
 # targets are absolute paths on one machine, so they are local-only.
 /.claude/skills/
+
+# Supabase CLI machine-local state (linked project ref, CLI version cache).
+# Written by commands such as `supabase gen types`; never committed.
+/supabase/.temp/
