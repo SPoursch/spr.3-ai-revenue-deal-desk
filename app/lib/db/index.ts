@@ -14,6 +14,7 @@
  * - accounts.ts  Deal Desk accounts (an ownership root)
  * - deals.ts     Deal Desk deals (the other ownership root)
  * - auth.ts      Supabase Auth: the verified user, sign-in/up/out, recovery
+ * - evidence.ts  Deal Desk evidence items and excerpts (immutable)
  * - errors.ts    the errors thrown when a table query fails
  * - notespace.ts the inherited NoteSpace tables (reference material only)
  */
@@ -33,6 +34,15 @@ export {
   listDeals,
   updateDeal,
 } from './deals'
+
+export {
+  createEvidenceExcerpt,
+  createEvidenceItem,
+  getEvidenceExcerpt,
+  getEvidenceItem,
+  listEvidenceExcerpts,
+  listEvidenceItems,
+} from './evidence'
 
 export type { AuthResult, AuthUser, EmailTokenType } from './auth'
 export {
