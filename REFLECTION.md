@@ -1,5 +1,16 @@
 # Reflection — Sprint 2 Part 8
 
+> **Scope of this file.** This is the Sprint 2 Part 8 reflection, carried into
+> this repository with the NoteSpace code. It describes the Sprint 2 NoteSpace
+> database, which is frozen. No Sprint 3 reflection has been written yet.
+>
+> Persistence has changed since: Sprint 3 does not use the NoteSpace database
+> or a Sprint 3-specific Supabase project. It uses the canonical `gtm-stack-fit`
+> Supabase database of the Revenue Operating Intelligence platform, whose
+> migrations live only in the `gtm-stack-fit` repository
+> (`gtm-stack-fit/docs/platform-persistence-design.md`). The ownership and RLS
+> reasoning below carries over to that design.
+
 The Part 5 review evidence that used to live in this file has moved to
 [`docs/part5-review-evidence.md`](docs/part5-review-evidence.md).
 

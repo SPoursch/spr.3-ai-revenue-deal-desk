@@ -4,291 +4,302 @@ Project guidance for Claude Code. Read this before doing anything in this reposi
 
 ## Project
 
-**Turing College — Build with AI, Sprint 2.**
+**Turing College — Build with AI, Sprint 3: AI Revenue Deal Desk.**
 
-- **Part 5 — "Notes App with Collections and Search".** Complete and merged.
-- **Part 6 — authentication.** Complete and merged as PR #4.
-- **Part 8 — per-user data ownership.** Active. Every collection, note and tag
-  belongs to exactly one account, and a signed-in user sees only what they
-  created. See "Ownership rules" and "Authentication rules" under
-  "Architecture rules".
+An AI-powered revenue decision workspace. It consolidates the commercial
+context of a deal, identifies exceptions and risks, and helps revenue teams
+understand what requires attention and why.
 
-A brand-new, locally developed notes application. Notes are stored persistently in
-Supabase and can be organised into collections, labelled with tags, and searched.
+- **The Deal is the atomic business object.** Every other concept describes a
+  deal, is attached to a deal, or is derived from a deal.
+- **Human-in-the-loop.** The AI understands, detects, explains and prepares.
+  Humans decide.
+- **The AI must never create or approve a Decision.** AI output is a finding,
+  proposal or explanation, never a Decision.
+- It is **not** a CRM replacement, **not** a CLM, and **not** a generic
+  chatbot.
 
-The codebase now exists and is under active development. It was started from an
-empty directory; see "Current state" for what has been built so far.
+The domain model — entities, relationships, the eight domain concepts (FACT,
+EVIDENCE, CONTEXT, RULE, EXCEPTION, DECISION, ACTION, OUTCOME) and every
+resolved scope decision (U1–U15) — is recorded in
+**`docs/sprint-3-domain-index.md`**. That document is the authority on domain
+meaning; this file is the authority on how work is done.
+
+### Platform position
+
+The Deal Desk is the current implementation slice of the **Revenue / Deal
+Intelligence** domain of a destination platform, **Revenue Operating
+Intelligence**. The second domain, **Technology / Stack Intelligence**, is GTM
+Stack Fit in the sibling repository `gtm-stack-fit`. The platform is the
+destination, **not** the Sprint 3 scope (see "Scope").
+
+### Repository boundaries
+
+- This repository was created from the frozen Sprint 2 "NoteSpace" `main` at
+  commit `bb6c3e2`. **Sprint 2 is frozen and is never modified**, neither its
+  repository nor its database.
+- **Canonical database.** Sprint 3 uses the hosted **`gtm-stack-fit`** Supabase
+  project, the single canonical Revenue Operating Intelligence database. There
+  is **no separate Sprint 3 Supabase project**. The Sprint 2 NoteSpace project
+  is frozen and never touched from here.
+- **Migration authority.** Every migration for the canonical database lives in
+  `gtm-stack-fit/supabase/migrations/`. **This repository owns no migration for
+  it and never applies one to it.** The canonical schema — table list,
+  ownership and RLS — is defined in
+  **`gtm-stack-fit/docs/platform-persistence-design.md`**.
+- This repository owns the Deal Desk application, its UI, its AI
+  implementation, its feature tests and the Deal Intelligence domain Index.
+- The repository has **no Git remote yet**. Do not add one until the user asks.
 
 ## Tech stack
 
-- Next.js (App Router)
-- TypeScript
-- Tailwind CSS
-- Supabase — the database, and Supabase Auth for email/password and Google
-  OAuth sign-in
-- `supabase-js` for queries, and `@supabase/ssr` for the cookie-backed server
-  session. Both are reached only through `app/lib/supabase.ts`.
-- **Supabase Agent Skills, installed repository-local under `.agents/skills/`.**
-  They are committed, so they travel with the repository rather than depending
-  on a user-level install. `.claude/skills/` holds machine-local symlinks to
-  them and is git-ignored.
-- No Supabase MCP server is configured. All Supabase work is done manually
-  (SQL in the Supabase dashboard / SQL editor, and `supabase-js` in application
-  code). Migrations are kept as versioned files in `supabase/migrations/` and
-  run by hand.
+- Next.js (App Router), TypeScript, Tailwind CSS. `AGENTS.md` warns that this
+  Next.js version has breaking changes: read the relevant guide in
+  `node_modules/next/dist/docs/` before writing route handlers, streaming or
+  other framework code.
+- Supabase (the canonical `gtm-stack-fit` project) — Postgres, Supabase Auth
+  (email/password and Google OAuth), optionally Storage for the simple document
+  path. Auth settings (Site URL, redirect allow-list, Google provider) are
+  configured for this application on the canonical project.
+- `supabase-js` for queries and `@supabase/ssr` for the cookie-backed server
+  session, both reached only through `app/lib/supabase.ts`.
+- **OpenRouter** as the LLM provider, called from the server only.
+- **Embeddings are optional.** If implemented: OpenAI `text-embedding-3-small`,
+  server-side, stored with pgvector. They must not block the MVP; Postgres
+  full-text search is the baseline retrieval.
+- **Playwright** for automated functional tests (not yet installed; installing
+  it is its own step).
+- **Supabase Agent Skills**, committed under `.agents/skills/`.
+  `.claude/skills/` holds machine-local symlinks and is git-ignored.
+- No Supabase MCP server. Schema work is migration files in
+  `gtm-stack-fit/supabase/migrations/`, applied from that repository to the
+  canonical project. Nothing in this repository changes the database schema.
 
 ## Current state
 
-**Steps 1 to 4 of the implementation sequence are implemented and merged.**
-Step 1 (scaffold + notes CRUD) was merged into `main` as PR #1, merge commit
-`522c082`. Steps 2, 3 and 4 — collections, the tag system, and tag filtering
-plus search — were built on `feature/collections` and merged into `main` as
-PR #2. `main` is at merge commit `f9494ef`.
+- Sprint 3 has not yet implemented any Deal Desk feature.
+- Done: the domain Index (`docs/sprint-3-domain-index.md`), with U1–U15
+  resolved, and this file.
+- Done: the Deal Intelligence table design, now held in the canonical
+  `gtm-stack-fit/docs/platform-persistence-design.md`.
+  `docs/sprint-3-schema-design.md` in this repository is **superseded** and is
+  kept only as a historical record.
+- Next: the Deal Intelligence migration, authored in `gtm-stack-fit`, after
+  verifying the canonical project's current migration state.
+- The code still contains the NoteSpace product (notes, collections, tags,
+  their components and actions). It is **reference material for patterns
+  only**. It is not extended, and it does not appear in the Sprint 3 UI.
+  No NoteSpace table exists in the canonical database.
+- `docs/supabase-schema.md` and `supabase/migrations/20260918120000_…` describe
+  the Sprint 2 NoteSpace database. They are history, not the Sprint 3 schema,
+  and **must never be run against the canonical database**.
 
-**Step 5, the optional feature, is implemented and merged.** Tag-name search —
-the workspace search also matching a note's tag names, alongside a final visual
-pass — was built on `feature/tag-search` and merged into `main` as **PR #3**,
-merge commit `e301457`, after its pre-merge diff review.
+## Scope
 
-**Part 6 — authentication — is complete and merged** into `main` as **PR #4**,
-merge commit `9ef1af0`. What it added:
+### In scope for Sprint 3
 
-- Supabase Auth for email/password sign-up, sign-in and sign-out, and for
-  Google sign-in. The Google provider is configured in the Supabase dashboard
-  and has been signed in with successfully.
-- `/workspace` is protected on the server: a request with no authenticated user
-  is redirected to `/login` before the page renders.
-- Every mutation Server Action authorises the request itself, since an action is
-  a public POST endpoint that the page guard does not cover.
-- Manual end-to-end authentication testing passed.
+- Deals, including renewal lineage
+- Evidence and evidence excerpts
+- Structured facts
+- Provisions
+- Rules
+- Exceptions
+- AI findings
+- Human Decisions
+- Actions
+- Deal outcomes
+- The AI Deal Copilot
+- Deterministic deal queries
+- Evidence retrieval / RAG
 
-**Part 8 — per-user data ownership — is in progress on `main`.** What it has
-added so far:
+### Out of scope for Sprint 3
 
-- `user_id` on `collections`, `notes` and `tags`, and row level security
-  policies that compare it against `auth.uid()`. This is the change that makes
-  a user see only their own notes. Applied by
-  `supabase/migrations/20260918120000_add_per_user_ownership.sql` and recorded
-  in `docs/supabase-schema.md`.
-- A profile menu in the top right of the workspace, showing the signed-in
-  user's name, email and avatar from the verified session, with sign-out.
-- Repository-local Supabase Agent Skills under `.agents/skills/`.
-- The two-account isolation test has passed end to end: two accounts each see
-  only their own notes, collections and tags.
-- The Supabase Security Advisor reports 0 errors. The remaining warnings are
-  known and deliberately deferred.
-- **Password reset, as the Part 8 optional task.** `/forgot-password` requests
-  a Supabase Auth recovery email, `/auth/confirm` turns the verified link into
-  a server-side session, and `/reset-password` sets the new password. Built on
-  `feature/password-reset` as **PR #5**, reviewed from a fresh Claude
-  Code session; merged. Manual validation is recorded in
-  `docs/part8-password-reset-validation.md`.
+- CRM integration
+- CSV import
+- Team / organisation tenancy
+- Roles and approval limits
+- Approval routing
+- A rule-builder UI
+- A workflow engine
+- Currency conversion
+- A full analytics / learning loop
+- Migrating Sprint 2 data
+- Carrying Notes / Collections / Tags into the Sprint 3 UI
 
-**Part 8 is complete and submitted.** PR #5 merged into `main` as `e2cf8b1`.
+### Sprint 3 deliverable versus the future platform
 
-**A Help / Q&A panel was added afterwards, as separately authorised
-post-submission polish.** A floating button in the workspace opens a panel of
-static Q&A content: `app/lib/help-content.ts` holds the text,
-`app/components/HelpLauncher.tsx` renders it, and `app/workspace/layout.tsx`
-mounts it behind the existing guard. Local and static — no table, no query, no
-fetch, no browser storage — and it changes nothing about authentication,
-Supabase, persistence, RLS or the data model. Built on `feature/help-panel`. It
-does not relax the Part 8 scope rules below; it was authorised explicitly after
-submission.
+The current Sprint 3 deliverable is: a secured authenticated app; the Deal Desk
+domain slice; a real LLM via OpenRouter; AI core functionality; persistence
+with RLS on the canonical database; evidence and context; exceptions and
+findings; human decisions; retrieval where the Sprint 3 project requires it;
+automated functional and security tests; deployment and security verification;
+and the required ai-code-reviewer PR / review.
 
-The earlier Part 8 commits — everything above the password-reset entry — were
-made directly on `main` rather than on a feature branch. That was a second
-deliberate, time-constrained departure from "One Git branch per feature",
-recorded here rather than left as silent drift. The password-reset work returns
-to the branch workflow in "Workflow rules": it was developed on
-`feature/password-reset` and goes to `main` through a reviewed pull request.
+**Future Revenue Operating Intelligence — not Sprint 3:** complete GTM
+technology intelligence, SaaS spend intelligence, AI / agent spend, agent
+operations, cross-domain analytics, business-impact measurement, procurement,
+full CRM / CLM functionality, advanced governance, a broad agent layer. These
+are architectural destinations only. Do not implement them, and do not create
+tables or abstractions for them.
 
-Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
-each, and step 2 was not merged before step 3 began. That is a deliberate,
-time-constrained departure from "Build one feature at a time" and "One Git
-branch per feature" under "Workflow rules", recorded here rather than left as
-silent drift.
+Anything outside the in-scope list is new scope that the user has to ask for.
 
-What exists:
+### Demo definitions
 
-- A Next.js (App Router) + TypeScript + Tailwind CSS app at the repository root.
-- Supabase client wiring in `app/lib/supabase.ts`, reading credentials from
-  environment variables only, with `.env.local.example` as the committed template.
-- The centralised data access module `app/lib/db.ts`. It is the only module that
-  queries Supabase, and `app/lib/supabase.ts` is imported by nothing else.
-- Four tables in Supabase — `notes`, `collections`, `tags` and `note_tags` —
-  documented in `docs/supabase-schema.md`.
-- A three-pane workspace: the collections tree, the note list for the collection
-  being viewed, and an editor pane for the selected note.
-- Notes CRUD, collection create/assign, tag create/add/remove, tag filtering and
-  search, driven by Server Actions in `app/lib/actions/` and rendered by
-  `app/workspace/page.tsx` and `app/components/`. Reads happen in Server
-  Components; only mutations, the search field and the profile menu are Client
-  Components.
-- Workspace state lives entirely in the URL (`collection`, `tag`, `q`, `note`),
-  so filtering and selection hold no client-side state. Filtering and search run
-  in memory over the already-loaded rows, adding no queries.
-- Authentication: `/login`, `/auth/callback` for the OAuth code exchange, a
-  server guard in `app/workspace/layout.tsx`, and `proxy.ts` refreshing the
-  session cookie. Auth calls live in `app/lib/db.ts` alongside every other
-  Supabase call.
-- Password recovery: `/forgot-password` (request a link), `/auth/confirm` (the
-  route handler that verifies what Supabase appends to the redirect and writes
-  the resulting session to cookies) and `/reset-password` (guarded by the same
-  `getAuthenticatedUser()` check the workspace uses). No custom SMTP is
-  configured, so the flow runs on Supabase's built-in email service and its
-  stock "Reset Password" template. `http://localhost:3000/auth/confirm` must be
-  in the Supabase redirect allow-list alongside `/auth/callback`, or the link
-  lands on the Site URL and the flow fails silently.
+These are fixed for Sprint 3 and must be implemented exactly:
 
-All 12 core requirements have an implementation. Requirements 10 and 11 add no
-schema: tag filtering and search operate on rows already loaded per request.
-
-### Hard stops (do not do these yet)
-
-**Every Part 5 stop is lifted.** Steps 1 to 4 are implemented and merged, so the
-schema stops are gone: `collections`, `notes.collection_id`, `tags` and
-`note_tags` all exist and are documented in `docs/supabase-schema.md`. The stop
-on the optional feature is gone as well: all 12 core requirements were confirmed
-working before step 5 began, and step 5 merged as PR #3.
-
-**The stops on Part 6 and Part 8 are lifted too.** Authentication is merged, and
-per-user ownership is applied to the live database.
-
-What remains is scope discipline for Part 8:
-
-- Do **not** add features beyond what Part 8 asks for. Anything outside that
-  scope is new scope the user has to ask for.
-- Part 8 proceeds one lab step at a time, in the order the user gives. Do not
-  run ahead of the step being asked for — in particular, do not change the
-  database, install packages, or change Supabase dashboard or Google provider
-  settings until the step that calls for it.
-- **Database changes are applied by the user, not by this repository.** There is
-  no CLI project and no MCP server, so a schema change means writing a migration
-  file under `supabase/migrations/` and handing the user the SQL to run. Never
-  report a migration as applied without verification output from the database.
-
-## Data model
-
-### Relationships
-
-- A collection can contain many notes.
-- A note belongs to zero or one collection.
-- A note can have many tags.
-- A tag can apply to many notes.
-- `note_tags` is the join table connecting notes and tags.
-- **Every collection, note and tag belongs to exactly one account**, through a
-  `user_id` referencing `auth.users`.
-
-### Tables
-
-1. **collections** — named containers for notes. Has `user_id`.
-2. **notes** — the note itself (title, body, optional collection reference).
-   Has `user_id`.
-3. **tags** — named labels. Has `user_id`.
-4. **note_tags** — many-to-many join between `notes` and `tags`. Has **no**
-   `user_id`: a pairing's owner is already a fact about its note and its tag, so
-   storing it a third time would be duplicated state that can drift. Its policy
-   derives ownership from those two relationships instead.
-
-Exact columns, constraints, indexes and RLS policies are recorded in
-`docs/supabase-schema.md`, which is kept in step with
-`supabase/migrations/`.
+- **Currency:** EUR only.
+- **Primary recurring metric:** ARR.
+- **"> €50k"** means ARR > €50,000.
+- **"Next quarter"** means the next calendar quarter, computed in the
+  **Europe/Berlin** timezone, deterministically in application logic.
+- **A renewal is a new Deal linked to its predecessor Deal.**
+- Deal data is seeded or entered manually.
+- Rules are fixed application logic, explicit and versionable in code.
 
 ## Architecture rules
 
-- **Single data access module.** Every Supabase read and write goes through one
-  centralised helper module (for example `app/lib/db.ts`). No component, route
-  handler or server action may call `supabase-js` directly. If a query is needed,
-  add a function to the helper module and call that.
-- **Credentials come from environment variables only.** Never hard-code a Supabase
-  URL, anon key, service key, or any other secret in source files.
-- **`.env.local` is never committed.** It must be listed in `.gitignore` before the
-  first commit that could otherwise pick it up. Commit a `.env.local.example` with
-  placeholder values instead.
-- **Supabase queries follow the official Supabase documentation.** When writing a
-  query, filter, join or auth call, check the official Supabase docs rather than
-  guessing at the API surface.
-- **Use the repository's Supabase Agent Skills.** Any Supabase or Postgres work —
-  schema changes, migrations, RLS policies, client or SSR integration, auth,
-  debugging a database error — loads the skills in `.agents/skills/` first, and
-  the Postgres one specifically before writing or changing anything that lives
-  in the database.
+### Reused foundation
+
+The NoteSpace auth, session and data-access foundation is reused unchanged.
+Its patterns carry over to every Deal Desk table and action.
+
+- **Single data access module.** Every Supabase read and write goes through
+  `app/lib/db.ts` (or a `db/` folder that keeps the same rule). No component,
+  route handler or Server Action calls `supabase-js` directly, and
+  `app/lib/supabase.ts` is imported by nothing else except `proxy.ts`.
+- **Credentials come from environment variables only.** Never hard-code a URL,
+  key or secret. `.env.local` is never committed; `.env.local.example` holds
+  placeholders.
+- **Supabase queries follow the official Supabase documentation.**
+- **Use the repository's Supabase Agent Skills** before any Supabase or
+  Postgres work, and the Postgres one before writing anything that lives in the
+  database.
 - **Nothing is persisted in the browser.** No `localStorage`, no
-  `sessionStorage`, for the session or for application data. Notes live in
-  Supabase; workspace state lives in the URL; the auth session lives in cookies
-  managed by `@supabase/ssr`.
+  `sessionStorage`. Data lives in Supabase, workspace state in the URL, the
+  session in cookies managed by `@supabase/ssr`.
+- **Errors are logged on the server; the user sees a generic message.** An
+  empty list must never be indistinguishable from a failed load, especially for
+  exceptions and risks.
 
 ### Authentication rules
 
-- **Use Supabase Auth for all sign-in and session handling** — never build custom
-  auth or store passwords yourself.
-- **Every page under `/workspace` requires a signed-in user.** Verify this on the
-  server and redirect to `/login` if they are not signed in.
-- **After a successful sign-in, redirect to `/workspace`.**
-- **After sign-out, redirect to `/login`.**
-- **If Google sign-in is implemented, use Supabase Auth's Google provider.** Do
-  not implement custom OAuth or credential handling.
+- **Use Supabase Auth for all sign-in and session handling.** Never build
+  custom auth or store passwords.
+- **Every page under `/workspace` requires a signed-in user**, verified on the
+  server, redirecting to `/login` otherwise.
+- **After sign-in, redirect to `/workspace`. After sign-out, redirect to
+  `/login`.**
+- **Google sign-in uses Supabase Auth's Google provider.**
 - **Verify the session; never trust the cookie as sent.** Identity comes from
-  `getClaims()`, which verifies the token's signature, not from `getSession()`,
-  which only decodes whatever the browser sent. A session cookie is
-  attacker-supplied input. `getAuthenticatedUser()` in `app/lib/db.ts` is the
-  single place this check lives.
-- **A Server Action authorises itself.** An action is a public POST endpoint,
-  not a page, so a page or layout guard does nothing to stop it being invoked
-  directly. Every mutating action calls the guard in
-  `app/lib/actions/require-auth.ts` before validating input or touching the
-  database.
-- **Password recovery is Supabase Auth's, and its token stays on the server.**
-  The recovery link is verified in the `/auth/confirm` route handler, which is
-  the only place able to write the resulting session cookie. No token is parsed
-  in the browser, no recovery listener runs client-side, and no password is
-  read back, compared or stored anywhere but Supabase Auth. Because the flow is
-  PKCE, the link only works in the browser that requested it; the failure
-  message says so rather than claiming the link expired.
-- **Provider metadata is for display only.** A display name or avatar comes from
-  `user_metadata`, which the user can edit, so it may be shown and must never be
-  used for an access decision. Authorisation uses the verified `sub` claim.
+  `getClaims()`, never from `getSession()`. `getAuthenticatedUser()` in
+  `app/lib/db.ts` is the single place this check lives.
+- **Every Server Action and route handler authorises itself** through
+  `app/lib/actions/require-auth.ts` before validating input, touching the
+  database or calling the AI. A page or layout guard does not protect them.
+- **Password recovery stays on the server** (`/auth/confirm`), as built in
+  Sprint 2.
+- **Provider metadata is for display only.** `user_metadata` never drives an
+  access decision.
 
-### Ownership rules
+### Tenancy and ownership rules
 
-- **Every collection, note and tag belongs to exactly one account; `note_tags`
-  ownership is derived through its note and tag relationships.** `collections`,
-  `notes` and `tags` each carry a `user_id` referencing `auth.users(id)`,
-  `not null`, with `on delete cascade`.
-- **RLS is the enforcement layer, not the application.** The policies restrict
-  every statement to the caller's own rows, so isolation cannot be lost by
-  forgetting a filter in one query. Application filtering is defence in depth;
-  the database is the authority.
-- **New rows derive `user_id` from the authenticated server session.** The
-  create functions in `app/lib/db.ts` read the id through `requireUserId()` and
-  send it explicitly.
-- **Never accept a user id from client input.** No function in `app/lib/db.ts`
-  takes a user id as an argument, and no Server Action reads one from a form
-  field. A client-supplied owner would be worthless, since the client is what is
-  being checked.
-- **`note_tags` ownership is derived, not stored.** Its policy requires the
-  caller to own the note, and additionally to own the tag when creating a
-  pairing.
+- **Single-user / private tenancy.** Every authenticated user sees only their
+  own deals and everything attached to them.
+- **Owner-scoped RLS is the enforcement layer.** Application filtering is
+  defence in depth; the database is the authority.
+- **The Deal is the ownership root (the NoteSpace pattern).** Among the Deal
+  Desk tables, only the roots — `accounts` and `deals` — carry a `user_id`
+  (`uuid not null default auth.uid()` referencing `auth.users(id)`
+  `on delete cascade`), and their policies compare it with
+  `(select auth.uid())`. Every other Deal Desk table carries `deal_id` and
+  derives its ownership through the deal; it does **not** store a `user_id`.
+  References between a deal's children are composite `(x_id, deal_id)` foreign
+  keys, so no row can point outside its own deal. The authoritative
+  table-level design is `gtm-stack-fit/docs/platform-persistence-design.md`.
+- **Authenticated users only.** `anon` has no access to any table in the
+  canonical database. The database also holds the GTM Stack Fit table
+  `saved_assessments`; the Deal Desk never reads or writes it.
+- **New rows derive `user_id` from the verified server session** via
+  `requireUserId()`.
+- **Never accept a user id from client input.** No `db.ts` function takes one
+  as an argument, and no action reads one from a form field.
+- **No service-role key and no RLS-bypassing (`security definer`) function in
+  any request path**, including retrieval and embedding work.
+
+### Schema rules
+
+- **All schema changes are migrations in `gtm-stack-fit/supabase/migrations/`**,
+  the single migration authority for the canonical database, applied from that
+  repository. **No migration is written in, or applied from, this
+  repository.** A Deal Desk feature that needs a schema change requests it
+  there. Never report a migration as applied without verification output from
+  the database.
+- The Sprint 3 domain schema is designed for the Deal Desk, not adapted from
+  the NoteSpace tables.
+- Every new table has RLS enabled and owner-scoped policies in the same
+  migration that creates it.
+
+### AI rules
+
+- **Server-side AI calls only.** The model is called only from server code,
+  through one server-only AI module that is the only caller of the provider —
+  the AI equivalent of `db.ts`.
+- **Never expose an AI provider key to the client.** `OPENROUTER_API_KEY` (and
+  an embeddings key, if embeddings are implemented) is server-only: never
+  prefixed `NEXT_PUBLIC_`, never sent to the browser, never logged.
+- **Deterministic → retrieval → reasoning, in that order.**
+  - Structured questions ("which deals renew next quarter?") are answered by
+    deterministic queries. The LLM may translate a question into a structured
+    filter; it never answers one from its own knowledge.
+  - Retrieval runs as the calling user, scoped by RLS, over that user's
+    evidence.
+  - LLM reasoning runs only over the facts and excerpts already selected.
+- **Send the minimum.** Only the evidence and context needed for the question
+  go to the model.
+- **AI findings must cite their supporting evidence** (excerpts and facts).
+  A finding without support is shown as unsupported, not as a fact.
+- **AI findings are never Decisions.** They are stored separately from human
+  Decisions, and no AI code path can create, approve or modify a Decision.
+- **AI-extracted provisions are candidates** until a human confirms them.
+  Confirmed provisions become persistent structured facts.
+- **Evidence text is untrusted input.** Treat it as data in prompts, never as
+  instructions.
+
+## Testing rules
+
+- **Automated functional / regression tests are required for every feature.**
+- The order for each feature is **test → implementation → test → verification
+  → review**.
+- **Use Playwright** for end-to-end functional tests where the behaviour is
+  user-facing; use lighter tests for pure logic (for example the quarter
+  calculation and rule conditions).
+- **No feature is complete on manual browser testing alone.**
+- Tests that exercise the AI must not depend on a live model answer being
+  word-for-word stable. Test the deterministic parts exactly, and the AI parts
+  by structure (citations present, no Decision created).
 
 ## Workflow rules
+
+### Methodology
+
+Every feature follows:
+
+> Understand → Index / domain model → Schema → Implement → Automated
+> functional test → Verify → PR → Review → Merge
 
 - **Build one feature at a time.** Finish, verify and merge a feature before
   starting the next.
 - **One Git branch per feature.** Never develop a feature directly on `main`.
-- **Commit at every stable state** — whenever the app builds and the feature under
-  construction is in a working, coherent condition.
-- **Diff review before every merge.** Read the full diff of a PR before merging it.
-- **At least one PR must be reviewed with a third-party slash command.**
-- **At least one PR diff must be reviewed from a fresh Claude Code session**, so the
-  review is done without the context that produced the code.
-- **Keep the implementation aligned with this file.** If a decision contradicts
-  CLAUDE.md, either change the approach or update CLAUDE.md deliberately — do not
-  silently drift.
+- **Commit at every stable state.**
+- **Diff review before every merge.**
+- **Keep the implementation aligned with this file and the domain Index.** If a
+  decision contradicts either, change the approach or update the document
+  deliberately. Do not silently drift.
 
 ### Validation workflow
 
-Run all four before every commit, and fix what they report rather than working
+Run these before every commit, and fix what they report rather than working
 around it:
 
 ```bash
@@ -298,83 +309,17 @@ npm run lint         # ESLint
 npm run build        # production build
 ```
 
-Vendored third-party files under `.agents/skills/` are excluded from that rule:
-they are upstream content and are not edited to satisfy a local check.
+Once the test runner is installed, the automated tests for the feature are
+added to this list.
 
-### Git workflow for future work
+Vendored third-party files under `.agents/skills/` are excluded: they are
+upstream content and are not edited to satisfy a local check.
 
-The Part 5 and Part 8 departures recorded under "Current state" are history, not
-precedent. New work follows this order:
+### Git workflow
 
-1. Branch from `main` — one feature branch per feature, never directly on `main`.
-2. Implement, committing at each stable state.
-3. Run the four validation commands above.
+1. Branch from `main`, one feature branch per feature.
+2. Write the tests, implement, and commit at each stable state.
+3. Run the validation commands and the tests.
 4. Review the complete diff, and confirm only intended files are staged.
-5. Commit, push, and open a PR into `main`.
+5. Commit and open a PR into `main` (once a remote exists).
 6. Review the PR diff in full before merging.
-
-## Implementation sequence
-
-Work through these in order. Do not start a step before the previous one is merged.
-
-1. **Scaffold app + notes CRUD** — Next.js + TypeScript + Tailwind scaffold,
-   Supabase client wiring, `app/lib/db.ts`, `notes` table, create/read/update/delete
-   notes.
-2. **Collections UI** — `collections` table, create and list collections, assign a
-   note to a collection, view notes by collection.
-3. **Tag system** — `tags` and `note_tags` tables, add and remove tags on a note,
-   filter notes by tag.
-4. **Search** — search across note titles and bodies.
-5. **Optional feature** — only after everything above works.
-6. **Authentication (Part 6)** — Supabase Auth sign-in and session handling, a
-   `/login` route, and a server-protected `/workspace` area. Governed by
-   "Authentication rules" above.
-7. **Per-user data ownership (Part 8)** — `user_id` on `collections`, `notes`
-   and `tags`, ownership RLS policies, and a profile menu. Governed by
-   "Ownership rules" above.
-
-Steps 1 to 5 are Part 5 and are all merged. Step 6 is Part 6 and is merged.
-Step 7 is Part 8 and is the current work, so the sequence does not end at step
-5.
-
-## Scope discipline
-
-**Do not build optional features until all 12 core requirements are working.**
-That condition was satisfied during Part 5. The 12 requirements below are Part
-5's list; they are recorded as history and all of them are implemented. Part 6
-authentication and Part 8 ownership are additional scope on top of them — they
-do not reopen, replace or wait on them.
-
-### Core requirements
-
-The 12 official requirements from the Turing College Sprint 2 Part 5 assignment,
-quoted verbatim:
-
-1. All data reads and writes go through supabase-js queries, centralised in a single helper module (for example, app/lib/db.ts).
-
-2. A notes table in Supabase stores each document with at minimum: an id, title, body, created_at, and updated_at column.
-
-3. A collections table stores named groups. Each collection has an id, name, and created_at column.
-
-4. Notes can belong to one collection. The notes table has a collection_id column that points at a row in collections. The column accepts empty values so a note can sit outside any collection.
-
-5. A tags table stores tag names. A separate note_tags table links tags to notes — each row connects one note to one tag, so a single note can carry several tags and a single tag can apply to many notes.
-
-6. The sidebar shows collections as expandable groups. Clicking a collection expands it to reveal the notes it contains. Uncollected notes appear under a default "All notes" or "Uncollected" group.
-
-7. A New collection control lets the user create a named collection from the sidebar. Clicking it prompts for a name and adds it immediately.
-
-8. When viewing a note, the user can assign it to a collection from a dropdown or picker. The change persists in the database.
-
-9. When viewing a note, the user can add or remove tags. Tags appear on the note card in the sidebar.
-
-10. The sidebar has a tag filter: selecting one or more tags narrows the list to notes that carry all selected tags.
-
-11. A search input at the top of the workspace queries across note titles and body content. Results update as the user types. The search respects any active tag filter.
-
-12. Readable empty states throughout: no blank screens when a collection is empty, no search results are found, or no tags match.
-
-Anything beyond this list is the "optional feature" in step 5 of the sequence.
-Part 6 authentication and Part 8 ownership sit outside that list and are
-separately authorised; see "Authentication rules", "Ownership rules", and steps
-6 and 7 of the implementation sequence.
