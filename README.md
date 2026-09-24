@@ -10,17 +10,21 @@ every decision**. It is not a CRM, not a CLM and not a generic chatbot.
 
 ## Status
 
-**No Deal Desk feature is implemented yet.** Done so far:
+**The Deal Desk data foundation is implemented; the Deal Desk UI is not yet.**
+Done so far:
 
 - the domain Index — [`docs/sprint-3-domain-index.md`](docs/sprint-3-domain-index.md)
 - the engineering guide — [`CLAUDE.md`](CLAUDE.md)
 - the Deal Intelligence table design, held in the canonical platform
   persistence design (see below)
+- the Deal Desk data-access layer (`app/lib/db/`): accounts, deals, evidence,
+  provisions, AI findings, exceptions and human Decisions, with unit and
+  integration tests
+- a Deal Desk landing page at `/workspace`
 
-The code in this repository is still the **inherited Sprint 2 NoteSpace
-foundation** (notes, collections, tags). It is reference material for the
-auth, session and data-access patterns only and will not appear in the Deal
-Desk UI.
+There is no Deal Desk UI, Server Action or AI module yet. The inherited Sprint 2
+NoteSpace code (notes, collections, tags) is still in the repository as
+reference material for patterns only; it is not reachable from `/workspace`.
 
 ## Where this fits
 
@@ -70,7 +74,7 @@ Reused unchanged for the Deal Desk:
   password reset, a profile menu with sign-out
 - Server-verified sessions (`getClaims()`), a server-side guard on every
   `/workspace` page, and a self-authorising check in every Server Action
-- A single data-access module (`app/lib/db.ts`) and a per-request server
+- A single data-access module (`app/lib/db/`) and a per-request server
   client
 - Ownership taken from the verified session only; row level security as the
   enforcement layer; nothing persisted in the browser
@@ -99,13 +103,16 @@ npm run dev
 Use the publishable key only; never put a secret or `service_role` key in a
 `NEXT_PUBLIC_` variable. `.env.local` is git-ignored and never committed.
 
-Until the Deal Desk features exist, the inherited NoteSpace workspace has no
-tables to read in the canonical database, which contains no NoteSpace table.
-Sign-in additionally depends on the canonical project's Auth settings (Site
-URL, `/auth/callback` and `/auth/confirm` in the redirect allow-list, Google
-provider) being configured for this application.
+After sign-in, `/workspace` shows the Deal Desk landing page; it reads no
+table. Sign-in additionally depends on the canonical project's Auth settings
+(Site URL, `/auth/callback` and `/auth/confirm` in the redirect allow-list,
+Google provider) being configured for this application.
 
-Other scripts: `npm run build`, `npm run start`, `npm run lint`.
+Other scripts: `npm run build`, `npm run start`, `npm run lint`, and
+`npm test` (Vitest). The integration tests sign in two test users on the
+hosted canonical database, so `npm test` also needs `.env.test.local` with
+`DEAL_DESK_TEST_USER_A_EMAIL`, `DEAL_DESK_TEST_USER_A_PASSWORD` and the same
+two for user B, plus network access.
 
 ## Project notes
 

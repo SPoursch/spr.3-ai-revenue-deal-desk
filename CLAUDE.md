@@ -49,7 +49,9 @@ destination, **not** the Sprint 3 scope (see "Scope").
   **`gtm-stack-fit/docs/platform-persistence-design.md`**.
 - This repository owns the Deal Desk application, its UI, its AI
   implementation, its feature tests and the Deal Intelligence domain Index.
-- The repository has **no Git remote yet**. Do not add one until the user asks.
+- The remote is `origin`, the public GitHub repository
+  `SPoursch/spr.3-ai-revenue-deal-desk`. `main` is the default branch and
+  changes reach it only through a reviewed pull request.
 
 ## Tech stack
 
@@ -70,22 +72,30 @@ destination, **not** the Sprint 3 scope (see "Scope").
 - **Playwright** for automated functional tests (not yet installed; installing
   it is its own step).
 - **Supabase Agent Skills**, committed under `.agents/skills/`.
-  `.claude/skills/` holds machine-local symlinks and is git-ignored.
+  `.claude/skills/` holds machine-local symlinks and is git-ignored, except
+  `.claude/skills/supabase-security/SKILL.md`, which is committed.
 - No Supabase MCP server. Schema work is migration files in
   `gtm-stack-fit/supabase/migrations/`, applied from that repository to the
   canonical project. Nothing in this repository changes the database schema.
 
 ## Current state
 
-- Sprint 3 has not yet implemented any Deal Desk feature.
 - Done: the domain Index (`docs/sprint-3-domain-index.md`), with U1–U15
   resolved, and this file.
 - Done: the Deal Intelligence table design, now held in the canonical
   `gtm-stack-fit/docs/platform-persistence-design.md`.
   `docs/sprint-3-schema-design.md` in this repository is **superseded** and is
   kept only as a historical record.
-- Next: the Deal Intelligence migration, authored in `gtm-stack-fit`, after
-  verifying the canonical project's current migration state.
+- Done: the Deal Intelligence migration (M3) and the default-privilege
+  hardening (W2), authored in and applied from `gtm-stack-fit`.
+- Done: the Deal Desk data-access layer in `app/lib/db/` — accounts, deals,
+  evidence, provisions, AI findings, exceptions and human Decisions — with
+  Vitest unit and integration tests.
+- Done: the Part 1 agents (`ai-architect`, `ai-code-reviewer`,
+  `security-auditor`) and the `supabase-security` skill under `.claude/`.
+- `/workspace` is a Deal Desk landing placeholder. There is no Deal Desk UI,
+  no Deal Desk Server Action and no AI module yet.
+- Next: deployment to Vercel (Sprint 3 Part 2).
 - The code still contains the NoteSpace product (notes, collections, tags,
   their components and actions). It is **reference material for patterns
   only**. It is not extended, and it does not appear in the Sprint 3 UI.
@@ -165,7 +175,7 @@ The NoteSpace auth, session and data-access foundation is reused unchanged.
 Its patterns carry over to every Deal Desk table and action.
 
 - **Single data access module.** Every Supabase read and write goes through
-  `app/lib/db.ts` (or a `db/` folder that keeps the same rule). No component,
+  the `app/lib/db/` folder, imported as `app/lib/db`. No component,
   route handler or Server Action calls `supabase-js` directly, and
   `app/lib/supabase.ts` is imported by nothing else except `proxy.ts`.
 - **Credentials come from environment variables only.** Never hard-code a URL,
@@ -193,7 +203,7 @@ Its patterns carry over to every Deal Desk table and action.
 - **Google sign-in uses Supabase Auth's Google provider.**
 - **Verify the session; never trust the cookie as sent.** Identity comes from
   `getClaims()`, never from `getSession()`. `getAuthenticatedUser()` in
-  `app/lib/db.ts` is the single place this check lives.
+  `app/lib/db/auth.ts` is the single place this check lives.
 - **Every Server Action and route handler authorises itself** through
   `app/lib/actions/require-auth.ts` before validating input, touching the
   database or calling the AI. A page or layout guard does not protect them.
@@ -222,8 +232,8 @@ Its patterns carry over to every Deal Desk table and action.
   `saved_assessments`; the Deal Desk never reads or writes it.
 - **New rows derive `user_id` from the verified server session** via
   `requireUserId()`.
-- **Never accept a user id from client input.** No `db.ts` function takes one
-  as an argument, and no action reads one from a form field.
+- **Never accept a user id from client input.** No `app/lib/db` function takes
+  one as an argument, and no action reads one from a form field.
 - **No service-role key and no RLS-bypassing (`security definer`) function in
   any request path**, including retrieval and embedding work.
 
@@ -244,7 +254,7 @@ Its patterns carry over to every Deal Desk table and action.
 
 - **Server-side AI calls only.** The model is called only from server code,
   through one server-only AI module that is the only caller of the provider —
-  the AI equivalent of `db.ts`.
+  the AI equivalent of `app/lib/db`.
 - **Never expose an AI provider key to the client.** `OPENROUTER_API_KEY` (and
   an embeddings key, if embeddings are implemented) is server-only: never
   prefixed `NEXT_PUBLIC_`, never sent to the browser, never logged.
@@ -307,10 +317,12 @@ git diff --check     # whitespace errors and conflict markers
 npx tsc --noEmit     # types
 npm run lint         # ESLint
 npm run build        # production build
+npm test             # Vitest unit and integration tests
 ```
 
-Once the test runner is installed, the automated tests for the feature are
-added to this list.
+`npm test` includes integration tests that sign in two dedicated test users on
+the hosted canonical database, so it needs `.env.test.local` and network
+access. Playwright is not installed yet; when it is, its tests join this list.
 
 Vendored third-party files under `.agents/skills/` are excluded: they are
 upstream content and are not edited to satisfy a local check.
@@ -321,5 +333,5 @@ upstream content and are not edited to satisfy a local check.
 2. Write the tests, implement, and commit at each stable state.
 3. Run the validation commands and the tests.
 4. Review the complete diff, and confirm only intended files are staged.
-5. Commit and open a PR into `main` (once a remote exists).
+5. Push the branch and open a PR into `main`.
 6. Review the PR diff in full before merging.
