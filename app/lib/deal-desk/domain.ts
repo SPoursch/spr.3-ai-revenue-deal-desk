@@ -1,8 +1,13 @@
-import type { Tables, TablesInsert, TablesUpdate } from '../database.types'
+import type {
+  Json,
+  Tables,
+  TablesInsert,
+  TablesUpdate,
+} from '../database.types'
 
 /**
  * Deal Desk application-domain types: the two ownership roots, Accounts and
- * Deals, and the deal's evidence and provisions.
+ * Deals, and the deal's evidence, provisions, AI findings and exceptions.
  *
  * Sources of truth:
  * - Persistence: the canonical `gtm-stack-fit` schema, through the generated
@@ -482,3 +487,248 @@ export type CreateProvisionExcerptInput = Pick<
   TablesInsert<'provision_excerpts'>,
   'provision_id' | 'excerpt_id' | 'deal_id'
 >
+
+// ---------------------------------------------------------------------------
+// AI findings
+//
+// Model output kept for audit (Domain Index §4): a candidate, proposal or
+// explanation, never a Decision and never authoritative on its own. Findings
+// are deal children without `user_id`; ownership is the deal's.
+//
+// Content is immutable: the schema grants UPDATE of `status` only, and no
+// DELETE — a finding disappears only with its deal. `created_at` is stamped
+// by the database.
+// ---------------------------------------------------------------------------
+
+/** The uuid of an AI finding. An alias for readability; not a branded type. */
+export type AiFindingId = string
+
+/** What an AI finding is about. */
+export const AI_FINDING_TYPES = [
+  'provision_candidate',
+  'exception_proposal',
+  'risk_explanation',
+  'deal_summary',
+  'answer',
+] as const
+
+export type AiFindingType = (typeof AI_FINDING_TYPES)[number]
+
+/** Where a finding stands with the human reviewing it. */
+export const AI_FINDING_STATUSES = [
+  'proposed',
+  'accepted',
+  'rejected',
+  'superseded',
+] as const
+
+export type AiFindingStatus = (typeof AI_FINDING_STATUSES)[number]
+
+/** Narrows an untrusted value to an AiFindingType. */
+export function isAiFindingType(value: unknown): value is AiFindingType {
+  return (
+    typeof value === 'string' &&
+    (AI_FINDING_TYPES as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to an AiFindingStatus. */
+export function isAiFindingStatus(value: unknown): value is AiFindingStatus {
+  return (
+    typeof value === 'string' &&
+    (AI_FINDING_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/** An AI finding as the application sees it, with its vocabulary columns narrowed. */
+export type AiFinding = Omit<Tables<'ai_findings'>, 'finding_type' | 'status'> & {
+  finding_type: AiFindingType
+  status: AiFindingStatus
+}
+
+/**
+ * The content columns of a new finding. `rule_key` and `rule_version` are set
+ * together or not at all; the database enforces the pair
+ * (ai_findings_rule_pair_check). `model` is the OpenRouter model id and
+ * `prompt_version` the prompt template version in code.
+ */
+type CreateAiFindingBase = Pick<
+  TablesInsert<'ai_findings'>,
+  'deal_id' | 'content' | 'rule_key' | 'rule_version' | 'model' | 'prompt_version'
+>
+
+/**
+ * A provision candidate must carry its structured payload — the database
+ * enforces the same rule with ai_findings_candidate_payload_check.
+ */
+export type CreateProvisionCandidateFindingInput = CreateAiFindingBase & {
+  finding_type: 'provision_candidate'
+  payload: Json
+}
+
+/** Any other finding; a payload is optional. */
+export type CreateOtherAiFindingInput = CreateAiFindingBase & {
+  finding_type: Exclude<AiFindingType, 'provision_candidate'>
+  payload?: Json | null
+}
+
+/**
+ * Fields a caller may supply when recording a finding. `status` is not one of
+ * them: every finding starts as 'proposed', and only a later status update —
+ * a human review — moves it.
+ */
+export type CreateAiFindingInput =
+  | CreateProvisionCandidateFindingInput
+  | CreateOtherAiFindingInput
+
+// ---------------------------------------------------------------------------
+// Exceptions
+//
+// A human-facing deviation of a deal from a rule (U8). Rules are code (U3):
+// an exception names its rule by `rule_key` and `rule_version`, not by a
+// foreign key. Exceptions are deal children without `user_id`; ownership is
+// the deal's.
+//
+// Everything but `status` is fixed at insert (E4), and there is no DELETE —
+// an exception disappears only with its deal. `status_changed_at` is
+// maintained by a trigger whenever the status changes (E9).
+// ---------------------------------------------------------------------------
+
+/** The uuid of an exception. An alias for readability; not a branded type. */
+export type ExceptionId = string
+
+/** What kind of deviation an exception records. */
+export const EXCEPTION_KINDS = [
+  'non_standard_provision',
+  'threshold_breach',
+  'missing_evidence',
+  'conflicting_evidence',
+  'timing_risk',
+  'commercial_risk',
+] as const
+
+export type ExceptionKind = (typeof EXCEPTION_KINDS)[number]
+
+export const EXCEPTION_SEVERITIES = ['low', 'medium', 'high'] as const
+
+export type ExceptionSeverity = (typeof EXCEPTION_SEVERITIES)[number]
+
+/** Whether a deterministic rule or an AI finding raised the exception. */
+export const EXCEPTION_ORIGINS = ['deterministic', 'ai'] as const
+
+export type ExceptionOrigin = (typeof EXCEPTION_ORIGINS)[number]
+
+/** Every status an exception can have (U8). */
+export const EXCEPTION_STATUSES = [
+  'open',
+  'under_review',
+  'decided',
+  'dismissed',
+] as const
+
+export type ExceptionStatus = (typeof EXCEPTION_STATUSES)[number]
+
+/**
+ * The statuses a reviewer may set directly. `decided` and `dismissed` are the
+ * result of recording a human Decision, which sets them in the same
+ * transaction (E5, E6); setting them any other way would claim a Decision
+ * that does not exist. The schema itself does not prevent that, so the
+ * application keeps to this subset.
+ */
+export const EXCEPTION_REVIEW_STATUSES = ['open', 'under_review'] as const
+
+export type ExceptionReviewStatus = (typeof EXCEPTION_REVIEW_STATUSES)[number]
+
+/** Narrows an untrusted value to an ExceptionKind. */
+export function isExceptionKind(value: unknown): value is ExceptionKind {
+  return (
+    typeof value === 'string' &&
+    (EXCEPTION_KINDS as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to an ExceptionSeverity. */
+export function isExceptionSeverity(value: unknown): value is ExceptionSeverity {
+  return (
+    typeof value === 'string' &&
+    (EXCEPTION_SEVERITIES as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to an ExceptionOrigin. */
+export function isExceptionOrigin(value: unknown): value is ExceptionOrigin {
+  return (
+    typeof value === 'string' &&
+    (EXCEPTION_ORIGINS as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to an ExceptionStatus. */
+export function isExceptionStatus(value: unknown): value is ExceptionStatus {
+  return (
+    typeof value === 'string' &&
+    (EXCEPTION_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to an ExceptionReviewStatus. */
+export function isExceptionReviewStatus(
+  value: unknown,
+): value is ExceptionReviewStatus {
+  return (
+    typeof value === 'string' &&
+    (EXCEPTION_REVIEW_STATUSES as readonly string[]).includes(value)
+  )
+}
+
+/**
+ * An exception as the application sees it, with its vocabulary columns
+ * narrowed. Named DealException so it is not mistaken for a thrown error.
+ */
+export type DealException = Omit<
+  Tables<'exceptions'>,
+  'kind' | 'severity' | 'origin' | 'status'
+> & {
+  kind: ExceptionKind
+  severity: ExceptionSeverity
+  origin: ExceptionOrigin
+  status: ExceptionStatus
+}
+
+/**
+ * The columns of a new exception. `provision_id`, when set, must be a
+ * provision of the same deal (composite foreign key). At most one exception
+ * per rule may be live — open or under review — on a deal
+ * (exceptions_deal_id_rule_key_live_key).
+ */
+type CreateExceptionBase = Pick<
+  TablesInsert<'exceptions'>,
+  'deal_id' | 'rule_key' | 'rule_version' | 'title' | 'why' | 'provision_id'
+> & {
+  kind: ExceptionKind
+  severity: ExceptionSeverity
+}
+
+/**
+ * An exception raised from an AI finding must name that finding — the
+ * database enforces the same rule with exceptions_ai_origin_source_check —
+ * and the finding must be of the same deal.
+ */
+export type CreateAiExceptionInput = CreateExceptionBase & {
+  origin: 'ai'
+  source_finding_id: AiFindingId
+}
+
+/** An exception raised by a deterministic rule; a source finding is optional. */
+export type CreateDeterministicExceptionInput = CreateExceptionBase & {
+  origin: 'deterministic'
+  source_finding_id?: AiFindingId | null
+}
+
+/**
+ * Fields a caller may supply when raising an exception. `status` is not one
+ * of them: every exception starts 'open' (C7).
+ */
+export type CreateExceptionInput =
+  | CreateAiExceptionInput
+  | CreateDeterministicExceptionInput

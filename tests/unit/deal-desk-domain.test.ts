@@ -1,16 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  AI_FINDING_STATUSES,
+  AI_FINDING_TYPES,
   DEAL_STAGES,
   DEAL_TYPES,
   EVIDENCE_MIME_TYPES,
   EVIDENCE_SOURCE_KINDS,
   EVIDENCE_TYPES,
+  EXCEPTION_KINDS,
+  EXCEPTION_ORIGINS,
+  EXCEPTION_REVIEW_STATUSES,
+  EXCEPTION_SEVERITIES,
+  EXCEPTION_STATUSES,
+  isAiFindingStatus,
+  isAiFindingType,
   isDealStage,
   isDealType,
   isEvidenceMimeType,
   isEvidenceSourceKind,
   isEvidenceType,
+  isExceptionKind,
+  isExceptionOrigin,
+  isExceptionReviewStatus,
+  isExceptionSeverity,
+  isExceptionStatus,
   isProvisionSource,
   isProvisionType,
   isProvisionValueUnit,
@@ -206,6 +220,147 @@ describe('provision vocabulary', () => {
     'rejects %j as a provision source',
     (value) => {
       expect(isProvisionSource(value)).toBe(false)
+    },
+  )
+})
+
+/**
+ * The AI finding vocabularies mirror ai_findings_finding_type_check and
+ * ai_findings_status_check in the canonical M3 migration.
+ */
+describe('AI finding vocabulary', () => {
+  it('lists exactly the finding types the database accepts', () => {
+    expect([...AI_FINDING_TYPES]).toEqual([
+      'provision_candidate',
+      'exception_proposal',
+      'risk_explanation',
+      'deal_summary',
+      'answer',
+    ])
+  })
+
+  it('lists exactly the finding statuses the database accepts', () => {
+    expect([...AI_FINDING_STATUSES]).toEqual([
+      'proposed',
+      'accepted',
+      'rejected',
+      'superseded',
+    ])
+  })
+
+  it.each(AI_FINDING_TYPES)('accepts the finding type %s', (value) => {
+    expect(isAiFindingType(value)).toBe(true)
+  })
+
+  it.each(AI_FINDING_STATUSES)('accepts the finding status %s', (value) => {
+    expect(isAiFindingStatus(value)).toBe(true)
+  })
+
+  it.each(['decision', 'summary', 'Answer', '', null, undefined, 1])(
+    'rejects %j as a finding type',
+    (value) => {
+      expect(isAiFindingType(value)).toBe(false)
+    },
+  )
+
+  it.each(['approved', 'decided', 'open', 'Proposed', '', null, undefined])(
+    'rejects %j as a finding status',
+    (value) => {
+      expect(isAiFindingStatus(value)).toBe(false)
+    },
+  )
+})
+
+/**
+ * The exception vocabularies mirror exceptions_kind_check,
+ * exceptions_severity_check, exceptions_origin_check and
+ * exceptions_status_check in the canonical M3 migration.
+ */
+describe('exception vocabulary', () => {
+  it('lists exactly the kinds the database accepts', () => {
+    expect([...EXCEPTION_KINDS]).toEqual([
+      'non_standard_provision',
+      'threshold_breach',
+      'missing_evidence',
+      'conflicting_evidence',
+      'timing_risk',
+      'commercial_risk',
+    ])
+  })
+
+  it('lists exactly the severities the database accepts', () => {
+    expect([...EXCEPTION_SEVERITIES]).toEqual(['low', 'medium', 'high'])
+  })
+
+  it('lists exactly the origins the database accepts', () => {
+    expect([...EXCEPTION_ORIGINS]).toEqual(['deterministic', 'ai'])
+  })
+
+  it('lists exactly the statuses the database accepts', () => {
+    expect([...EXCEPTION_STATUSES]).toEqual([
+      'open',
+      'under_review',
+      'decided',
+      'dismissed',
+    ])
+  })
+
+  it('reserves decided and dismissed for Decisions: review statuses are open and under_review only', () => {
+    expect([...EXCEPTION_REVIEW_STATUSES]).toEqual(['open', 'under_review'])
+  })
+
+  it.each(EXCEPTION_KINDS)('accepts the kind %s', (value) => {
+    expect(isExceptionKind(value)).toBe(true)
+  })
+
+  it.each(EXCEPTION_SEVERITIES)('accepts the severity %s', (value) => {
+    expect(isExceptionSeverity(value)).toBe(true)
+  })
+
+  it.each(EXCEPTION_ORIGINS)('accepts the origin %s', (value) => {
+    expect(isExceptionOrigin(value)).toBe(true)
+  })
+
+  it.each(EXCEPTION_STATUSES)('accepts the status %s', (value) => {
+    expect(isExceptionStatus(value)).toBe(true)
+  })
+
+  it.each(EXCEPTION_REVIEW_STATUSES)('accepts the review status %s', (value) => {
+    expect(isExceptionReviewStatus(value)).toBe(true)
+  })
+
+  it.each(['decided', 'dismissed', 'closed', 'Open', '', null, undefined])(
+    'rejects %j as a review status',
+    (value) => {
+      expect(isExceptionReviewStatus(value)).toBe(false)
+    },
+  )
+
+  it.each(['risk', 'threshold', 'Timing_Risk', '', null, undefined])(
+    'rejects %j as a kind',
+    (value) => {
+      expect(isExceptionKind(value)).toBe(false)
+    },
+  )
+
+  it.each(['critical', 'HIGH', 'med', '', null, undefined, 3])(
+    'rejects %j as a severity',
+    (value) => {
+      expect(isExceptionSeverity(value)).toBe(false)
+    },
+  )
+
+  it.each(['human', 'rule', 'AI', '', null, undefined])(
+    'rejects %j as an origin',
+    (value) => {
+      expect(isExceptionOrigin(value)).toBe(false)
+    },
+  )
+
+  it.each(['closed', 'resolved', 'Open', '', null, undefined])(
+    'rejects %j as a status',
+    (value) => {
+      expect(isExceptionStatus(value)).toBe(false)
     },
   )
 })

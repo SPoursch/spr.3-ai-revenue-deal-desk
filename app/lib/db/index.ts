@@ -11,13 +11,15 @@
  * module-internal helper — `requireUserId()` in auth.ts — cannot leak out
  * through a wildcard re-export.
  *
- * - accounts.ts  Deal Desk accounts (an ownership root)
- * - deals.ts     Deal Desk deals (the other ownership root)
- * - auth.ts      Supabase Auth: the verified user, sign-in/up/out, recovery
- * - evidence.ts  Deal Desk evidence items and excerpts (immutable)
- * - errors.ts    the errors thrown when a table query fails
- * - provisions.ts Deal Desk provisions and their excerpt citations
- * - notespace.ts the inherited NoteSpace tables (reference material only)
+ * - accounts.ts    Deal Desk accounts (an ownership root)
+ * - ai-findings.ts Deal Desk AI findings (content immutable; never Decisions)
+ * - auth.ts        Supabase Auth: the verified user, sign-in/up/out, recovery
+ * - deals.ts       Deal Desk deals (the other ownership root)
+ * - errors.ts      the errors thrown when a table query fails
+ * - evidence.ts    Deal Desk evidence items and excerpts (immutable)
+ * - exceptions.ts  Deal Desk exceptions (status is the only mutable column)
+ * - notespace.ts   the inherited NoteSpace tables (reference material only)
+ * - provisions.ts  Deal Desk provisions and their excerpt citations
  */
 
 export {
@@ -27,6 +29,13 @@ export {
   listAccounts,
   updateAccount,
 } from './accounts'
+
+export {
+  createAiFinding,
+  getAiFinding,
+  listAiFindings,
+  updateAiFindingStatus,
+} from './ai-findings'
 
 export {
   createDeal,
@@ -44,6 +53,13 @@ export {
   listEvidenceExcerpts,
   listEvidenceItems,
 } from './evidence'
+
+export {
+  createException,
+  getException,
+  listExceptions,
+  updateExceptionStatus,
+} from './exceptions'
 
 export {
   addProvisionExcerpt,
