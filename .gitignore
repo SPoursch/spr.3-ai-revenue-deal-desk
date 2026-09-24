@@ -53,4 +53,13 @@ next-env.d.ts
 # Agent skills. The real files live in .agents/skills/ and are committed.
 # .claude/skills/ holds symlinks the installer creates for Claude Code, whose
 # targets are absolute paths on one machine, so they are local-only.
-/.claude/skills/
+/.claude/skills/*
+# Exception: the supabase-security skill (Part 1 security auditor) is a real
+# file, not an installer symlink, so it is committed. Only its SKILL.md.
+!/.claude/skills/supabase-security/
+/.claude/skills/supabase-security/*
+!/.claude/skills/supabase-security/SKILL.md
+
+# Supabase CLI machine-local state (linked project ref, CLI version cache).
+# Written by commands such as `supabase gen types`; never committed.
+/supabase/.temp/

@@ -1,5 +1,15 @@
 # Supabase Schema
 
+> **Sprint 2 history — not the Sprint 3 schema.** This document describes the
+> frozen Sprint 2 NoteSpace Supabase project (`notes-app-collections-search`)
+> as it stood at the end of Sprint 2. It was carried into this repository with
+> the NoteSpace code and is kept as reference for the ownership and RLS
+> patterns only. None of these tables exists in the canonical `gtm-stack-fit`
+> database that Sprint 3 uses, and neither this document nor
+> `supabase/migrations/20260918120000_add_per_user_ownership.sql` may be
+> applied to it. The Sprint 3 schema is defined in
+> `gtm-stack-fit/docs/platform-persistence-design.md`.
+
 Current state of the database for **Turing College BAI Sprint 2 — Notes App
 with Collections and Search**, through Part 5 (schema), Part 6 (authentication)
 and Part 8 (per-user ownership).

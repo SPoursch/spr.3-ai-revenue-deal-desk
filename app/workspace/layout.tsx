@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
 
-import { HelpLauncher } from '@/app/components/HelpLauncher'
 import { getAuthenticatedUser } from '@/app/lib/db'
 
 /**
@@ -30,14 +29,5 @@ export default async function WorkspaceLayout({
     redirect('/login')
   }
 
-  // The help panel is mounted here rather than on the page so that it is
-  // covered by the guard above: it cannot render for a signed-out request, and
-  // it keeps covering any route added under /workspace later. It is fixed to
-  // the viewport, so it takes no part in the page's layout.
-  return (
-    <>
-      {children}
-      <HelpLauncher />
-    </>
-  )
+  return children
 }
