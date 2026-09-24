@@ -50,6 +50,28 @@ function readStringClaim(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+/**
+ * Shown for every failed sign-in, whatever the cause. A wrong password, an
+ * unknown address and an unconfirmed address must read the same, or the form
+ * tells anyone which addresses have accounts. Supabase's own text is logged.
+ */
+const SIGN_IN_FAILED_MESSAGE =
+  'Could not sign in. Check your email address and password and try again.'
+
+/**
+ * Shown for a failed sign-up. In particular it hides "User already
+ * registered", which would otherwise disclose that the address has an
+ * account. Supabase's own text is logged.
+ */
+const SIGN_UP_FAILED_MESSAGE = 'Could not create the account. Please try again.'
+
+/**
+ * The one sign-up failure worth naming: it is about the password the user
+ * chose, not about whether the address is registered.
+ */
+const WEAK_PASSWORD_MESSAGE =
+  'That password is too weak. Choose a longer or less common one.'
+
 /** Outcome of a sign-in, sign-up or sign-out attempt. */
 export type AuthResult = {
   ok: boolean
@@ -133,7 +155,13 @@ export async function signUpWithPassword(
   if (error) {
     console.error('[auth] sign-up failed:', error)
 
-    return { ok: false, message: error.message }
+    return {
+      ok: false,
+      message:
+        error.code === 'weak_password'
+          ? WEAK_PASSWORD_MESSAGE
+          : SIGN_UP_FAILED_MESSAGE,
+    }
   }
 
   // With "Confirm email" enabled a user row comes back with no session: the
@@ -164,7 +192,7 @@ export async function signInWithPassword(
   if (error) {
     console.error('[auth] sign-in failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: SIGN_IN_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
