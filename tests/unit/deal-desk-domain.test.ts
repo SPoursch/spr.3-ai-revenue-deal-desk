@@ -11,6 +11,12 @@ import {
   isEvidenceMimeType,
   isEvidenceSourceKind,
   isEvidenceType,
+  isProvisionSource,
+  isProvisionType,
+  isProvisionValueUnit,
+  PROVISION_SOURCES,
+  PROVISION_TYPES,
+  PROVISION_VALUE_UNITS,
 } from '../../app/lib/deal-desk/domain'
 
 /**
@@ -134,6 +140,72 @@ describe('evidence vocabulary', () => {
     'rejects %j as a mime type',
     (value) => {
       expect(isEvidenceMimeType(value)).toBe(false)
+    },
+  )
+})
+
+/**
+ * The provision vocabularies mirror provisions_provision_type_check,
+ * provisions_value_unit_check and provisions_source_check in the canonical
+ * M3 migration, spelled out for the same reason as above.
+ */
+describe('provision vocabulary', () => {
+  it('lists exactly the provision types the database accepts', () => {
+    expect([...PROVISION_TYPES]).toEqual([
+      'liability_cap',
+      'data_residency',
+      'payment_terms',
+      'auto_renewal',
+      'termination',
+      'discount',
+      'governing_law',
+    ])
+  })
+
+  it('lists exactly the value units the database accepts', () => {
+    expect([...PROVISION_VALUE_UNITS]).toEqual([
+      'months_of_fees',
+      'eur',
+      'days',
+      'percent',
+      'region',
+    ])
+  })
+
+  it('lists exactly the sources the database accepts', () => {
+    expect([...PROVISION_SOURCES]).toEqual(['human_entered', 'ai_confirmed'])
+  })
+
+  it.each(PROVISION_TYPES)('accepts the provision type %s', (value) => {
+    expect(isProvisionType(value)).toBe(true)
+  })
+
+  it.each(PROVISION_VALUE_UNITS)('accepts the value unit %s', (value) => {
+    expect(isProvisionValueUnit(value)).toBe(true)
+  })
+
+  it.each(PROVISION_SOURCES)('accepts the source %s', (value) => {
+    expect(isProvisionSource(value)).toBe(true)
+  })
+
+  it.each(['Liability_Cap', 'liability cap', 'sla', 'msa', '', null, undefined, 7])(
+    'rejects %j as a provision type',
+    (value) => {
+      expect(isProvisionType(value)).toBe(false)
+    },
+  )
+
+  it.each(['EUR', 'months', 'percentage', '%', '', null, undefined, 0])(
+    'rejects %j as a value unit',
+    (value) => {
+      expect(isProvisionValueUnit(value)).toBe(false)
+    },
+  )
+
+  it.each(['ai', 'ai_proposed', 'human', 'Human_Entered', '', null, undefined])(
+    'rejects %j as a provision source',
+    (value) => {
+      expect(isProvisionSource(value)).toBe(false)
     },
   )
 })

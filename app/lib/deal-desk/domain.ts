@@ -2,7 +2,7 @@ import type { Tables, TablesInsert, TablesUpdate } from '../database.types'
 
 /**
  * Deal Desk application-domain types: the two ownership roots, Accounts and
- * Deals, and the deal's evidence.
+ * Deals, and the deal's evidence and provisions.
  *
  * Sources of truth:
  * - Persistence: the canonical `gtm-stack-fit` schema, through the generated
@@ -323,4 +323,162 @@ export type CreateEvidenceExcerptInput = Pick<
   | 'end_offset'
   | 'section_label'
   | 'content'
+>
+
+// ---------------------------------------------------------------------------
+// Provisions
+//
+// A provision is a confirmed commercial or legal term of a deal (Domain Index
+// §1, U4): a structured fact, not an AI candidate. AI candidates stay in
+// `ai_findings` until a human confirms them; confirming one creates a
+// provision with source 'ai_confirmed' that names the finding.
+//
+// Provisions are deal children without `user_id`; ownership is the deal's,
+// through row level security on `deal_id`. They are mutable in their value
+// and confirmation time only. Identity, deal, type and provenance
+// (`provision_type`, `source`, `source_finding_id`) are fixed at insert (E4).
+// ---------------------------------------------------------------------------
+
+/** The uuid of a provision. An alias for readability; not a branded type. */
+export type ProvisionId = string
+
+/** Which contractual term a provision records. One per type per deal (C4). */
+export const PROVISION_TYPES = [
+  'liability_cap',
+  'data_residency',
+  'payment_terms',
+  'auto_renewal',
+  'termination',
+  'discount',
+  'governing_law',
+] as const
+
+export type ProvisionType = (typeof PROVISION_TYPES)[number]
+
+/** The unit of a provision's numeric value, when it has one. */
+export const PROVISION_VALUE_UNITS = [
+  'months_of_fees',
+  'eur',
+  'days',
+  'percent',
+  'region',
+] as const
+
+export type ProvisionValueUnit = (typeof PROVISION_VALUE_UNITS)[number]
+
+/**
+ * How a provision was established: typed in by a human, or an AI candidate a
+ * human confirmed. Both are human-confirmed; the AI never creates one alone.
+ */
+export const PROVISION_SOURCES = ['human_entered', 'ai_confirmed'] as const
+
+export type ProvisionSource = (typeof PROVISION_SOURCES)[number]
+
+/** Narrows an untrusted value, such as a form field, to a ProvisionType. */
+export function isProvisionType(value: unknown): value is ProvisionType {
+  return (
+    typeof value === 'string' &&
+    (PROVISION_TYPES as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to a ProvisionValueUnit. */
+export function isProvisionValueUnit(
+  value: unknown,
+): value is ProvisionValueUnit {
+  return (
+    typeof value === 'string' &&
+    (PROVISION_VALUE_UNITS as readonly string[]).includes(value)
+  )
+}
+
+/** Narrows an untrusted value to a ProvisionSource. */
+export function isProvisionSource(value: unknown): value is ProvisionSource {
+  return (
+    typeof value === 'string' &&
+    (PROVISION_SOURCES as readonly string[]).includes(value)
+  )
+}
+
+/** A provision as the application sees it, with its vocabulary columns narrowed. */
+export type Provision = Omit<
+  Tables<'provisions'>,
+  'provision_type' | 'value_unit' | 'source'
+> & {
+  provision_type: ProvisionType
+  value_unit: ProvisionValueUnit | null
+  source: ProvisionSource
+}
+
+/**
+ * The value columns, granted for both INSERT and UPDATE. `value_numeric` and
+ * `value_unit` are both set or both null; the database enforces the pair
+ * (provisions_value_unit_pair_check).
+ */
+type ProvisionValueFields = Pick<
+  TablesInsert<'provisions'>,
+  'value_text' | 'value_numeric'
+> & {
+  value_unit?: ProvisionValueUnit | null
+}
+
+type CreateProvisionBase = Pick<TablesInsert<'provisions'>, 'deal_id'> &
+  ProvisionValueFields & {
+    provision_type: ProvisionType
+  }
+
+/**
+ * A provision a human typed in. It may still name the finding it was prompted
+ * by; the schema allows that and requires nothing of it.
+ */
+export type CreateHumanEnteredProvisionInput = CreateProvisionBase & {
+  source: 'human_entered'
+  source_finding_id?: string | null
+}
+
+/**
+ * A provision confirmed from an AI candidate. It must name that finding — the
+ * database enforces the same rule with provisions_ai_confirmed_source_check —
+ * and the finding must belong to the same deal (composite foreign key).
+ */
+export type CreateAiConfirmedProvisionInput = CreateProvisionBase & {
+  source: 'ai_confirmed'
+  source_finding_id: string
+}
+
+/**
+ * Fields a caller may supply when creating a provision. `confirmed_at` is not
+ * one of them: the database stamps the confirmation time, so a provision
+ * cannot be created backdated.
+ */
+export type CreateProvisionInput =
+  | CreateHumanEnteredProvisionInput
+  | CreateAiConfirmedProvisionInput
+
+/**
+ * Fields a caller may supply when updating a provision — exactly the four
+ * columns the schema grants for UPDATE. Omitted keys are left alone.
+ *
+ * `confirmed_at` records a human (re)confirmation; the schema leaves setting
+ * it to the application and does not constrain the value.
+ */
+export type UpdateProvisionInput = Partial<
+  Pick<TablesUpdate<'provisions'>, 'value_text' | 'value_numeric' | 'confirmed_at'>
+> & {
+  value_unit?: ProvisionValueUnit | null
+}
+
+/**
+ * A citation linking a provision to an evidence excerpt that supports it. A
+ * provision with none is shown as an unsupported claim.
+ */
+export type ProvisionExcerpt = Tables<'provision_excerpts'>
+
+/**
+ * Fields for a new citation. `deal_id` must be the deal of both the provision
+ * and the excerpt: two composite foreign keys reject anything else.
+ */
+export type CreateProvisionExcerptInput = Pick<
+  TablesInsert<'provision_excerpts'>,
+  'provision_id' | 'excerpt_id' | 'deal_id'
 >

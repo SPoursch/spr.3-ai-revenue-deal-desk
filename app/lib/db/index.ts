@@ -16,6 +16,7 @@
  * - auth.ts      Supabase Auth: the verified user, sign-in/up/out, recovery
  * - evidence.ts  Deal Desk evidence items and excerpts (immutable)
  * - errors.ts    the errors thrown when a table query fails
+ * - provisions.ts Deal Desk provisions and their excerpt citations
  * - notespace.ts the inherited NoteSpace tables (reference material only)
  */
 
@@ -43,6 +44,17 @@ export {
   listEvidenceExcerpts,
   listEvidenceItems,
 } from './evidence'
+
+export {
+  addProvisionExcerpt,
+  createProvision,
+  deleteProvision,
+  getProvision,
+  listProvisionExcerpts,
+  listProvisions,
+  removeProvisionExcerpt,
+  updateProvision,
+} from './provisions'
 
 export type { AuthResult, AuthUser, EmailTokenType } from './auth'
 export {
