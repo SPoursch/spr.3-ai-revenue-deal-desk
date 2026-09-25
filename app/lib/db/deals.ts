@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables, TablesUpdate } from '../database.types'
+import type { Tables, TablesUpdate } from '../database.types'
 import {
   isDealStage,
   isDealType,
@@ -48,11 +46,6 @@ const DEAL_COLUMNS =
 
 type DealRow = Omit<Tables<'deals'>, 'user_id'>
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows a row's vocabulary columns from the generated `string` to the
  * domain unions.
@@ -81,7 +74,7 @@ function toDeal(row: DealRow): Deal {
  * Deal Desk asks about most, then by name so the order is stable.
  */
 export async function listDeals(): Promise<Deal[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DEALS_TABLE)
     .select(DEAL_COLUMNS)
     .order('renewal_date', { ascending: true, nullsFirst: false })
@@ -96,7 +89,7 @@ export async function listDeals(): Promise<Deal[]> {
 
 /** Reads one deal, or null when it does not exist or is not the caller's. */
 export async function getDeal(id: DealId): Promise<Deal | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DEALS_TABLE)
     .select(DEAL_COLUMNS)
     .eq('id', id)
@@ -117,7 +110,7 @@ export async function getDeal(id: DealId): Promise<Deal | null> {
  * Server Action, and the database constraints are the final authority.
  */
 export async function createDeal(input: CreateDealInput): Promise<Deal> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DEALS_TABLE)
     .insert({
       account_id: input.account_id,
@@ -181,7 +174,7 @@ export async function updateDeal(
     return getDeal(id)
   }
 
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DEALS_TABLE)
     .update(patch)
     .eq('id', id)
@@ -206,7 +199,7 @@ export async function updateDeal(
  * database.
  */
 export async function deleteDeal(id: DealId): Promise<Deal | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DEALS_TABLE)
     .delete()
     .eq('id', id)

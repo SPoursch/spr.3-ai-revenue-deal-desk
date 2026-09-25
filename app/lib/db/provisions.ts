@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables, TablesUpdate } from '../database.types'
+import type { Tables, TablesUpdate } from '../database.types'
 import {
   isProvisionSource,
   isProvisionType,
@@ -55,11 +53,6 @@ const PROVISION_COLUMNS =
 /** Every `provision_excerpts` column. */
 const PROVISION_EXCERPT_COLUMNS = 'provision_id, excerpt_id, deal_id, created_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows a row's vocabulary columns from the generated `string` to the
  * domain unions. As with `toDeal()`, a failure means the database vocabulary
@@ -94,7 +87,7 @@ function toProvision(row: Tables<'provisions'>): Provision {
  * yields an empty list.
  */
 export async function listProvisions(dealId: DealId): Promise<Provision[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISIONS_TABLE)
     .select(PROVISION_COLUMNS)
     .eq('deal_id', dealId)
@@ -109,7 +102,7 @@ export async function listProvisions(dealId: DealId): Promise<Provision[]> {
 
 /** Reads one provision, or null when it does not exist or is not the caller's. */
 export async function getProvision(id: ProvisionId): Promise<Provision | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISIONS_TABLE)
     .select(PROVISION_COLUMNS)
     .eq('id', id)
@@ -130,7 +123,7 @@ export async function getProvision(id: ProvisionId): Promise<Provision | null> {
 export async function createProvision(
   input: CreateProvisionInput,
 ): Promise<Provision> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISIONS_TABLE)
     .insert({
       deal_id: input.deal_id,
@@ -175,7 +168,7 @@ export async function updateProvision(
     return getProvision(id)
   }
 
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISIONS_TABLE)
     .update(patch)
     .eq('id', id)
@@ -196,7 +189,7 @@ export async function updateProvision(
 export async function deleteProvision(
   id: ProvisionId,
 ): Promise<Provision | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISIONS_TABLE)
     .delete()
     .eq('id', id)
@@ -222,7 +215,7 @@ export async function deleteProvision(
 export async function listProvisionExcerpts(
   provisionId: ProvisionId,
 ): Promise<ProvisionExcerpt[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISION_EXCERPTS_TABLE)
     .select(PROVISION_EXCERPT_COLUMNS)
     .eq('provision_id', provisionId)
@@ -244,7 +237,7 @@ export async function listProvisionExcerpts(
 export async function addProvisionExcerpt(
   input: CreateProvisionExcerptInput,
 ): Promise<ProvisionExcerpt> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISION_EXCERPTS_TABLE)
     .insert({
       provision_id: input.provision_id,
@@ -272,7 +265,7 @@ export async function removeProvisionExcerpt(
   provisionId: ProvisionId,
   excerptId: EvidenceExcerptId,
 ): Promise<boolean> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(PROVISION_EXCERPTS_TABLE)
     .delete()
     .eq('provision_id', provisionId)

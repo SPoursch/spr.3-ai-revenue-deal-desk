@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables } from '../database.types'
+import type { Tables } from '../database.types'
 import {
   isEvidenceMimeType,
   isEvidenceSourceKind,
@@ -59,11 +57,6 @@ const EVIDENCE_ITEM_COLUMNS =
 const EVIDENCE_EXCERPT_COLUMNS =
   'id, evidence_item_id, deal_id, ordinal, start_offset, end_offset, section_label, content, created_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows an item's vocabulary columns from the generated `string` to the
  * domain unions. As with `toDeal()`, a failure means the database vocabulary
@@ -98,7 +91,7 @@ function toEvidenceItem(row: Tables<'evidence_items'>): EvidenceItem {
  * or is not the caller's yields an empty list.
  */
 export async function listEvidenceItems(dealId: DealId): Promise<EvidenceItem[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_ITEMS_TABLE)
     .select(EVIDENCE_ITEM_COLUMNS)
     .eq('deal_id', dealId)
@@ -116,7 +109,7 @@ export async function listEvidenceItems(dealId: DealId): Promise<EvidenceItem[]>
 export async function getEvidenceItem(
   id: EvidenceItemId,
 ): Promise<EvidenceItem | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_ITEMS_TABLE)
     .select(EVIDENCE_ITEM_COLUMNS)
     .eq('id', id)
@@ -137,7 +130,7 @@ export async function getEvidenceItem(
 export async function createEvidenceItem(
   input: CreateEvidenceItemInput,
 ): Promise<EvidenceItem> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_ITEMS_TABLE)
     .insert({
       deal_id: input.deal_id,
@@ -172,7 +165,7 @@ export async function createEvidenceItem(
 export async function listEvidenceExcerpts(
   evidenceItemId: EvidenceItemId,
 ): Promise<EvidenceExcerpt[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_EXCERPTS_TABLE)
     .select(EVIDENCE_EXCERPT_COLUMNS)
     .eq('evidence_item_id', evidenceItemId)
@@ -189,7 +182,7 @@ export async function listEvidenceExcerpts(
 export async function getEvidenceExcerpt(
   id: EvidenceExcerptId,
 ): Promise<EvidenceExcerpt | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_EXCERPTS_TABLE)
     .select(EVIDENCE_EXCERPT_COLUMNS)
     .eq('id', id)
@@ -218,7 +211,7 @@ export async function getEvidenceExcerpt(
 export async function createEvidenceExcerpt(
   input: CreateEvidenceExcerptInput,
 ): Promise<EvidenceExcerpt> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EVIDENCE_EXCERPTS_TABLE)
     .insert({
       evidence_item_id: input.evidence_item_id,

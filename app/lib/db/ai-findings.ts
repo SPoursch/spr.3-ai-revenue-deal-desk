@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables } from '../database.types'
+import type { Tables } from '../database.types'
 import {
   isAiFindingStatus,
   isAiFindingType,
@@ -42,11 +40,6 @@ const AI_FINDINGS_TABLE = 'ai_findings'
 const AI_FINDING_COLUMNS =
   'id, deal_id, finding_type, content, payload, rule_key, rule_version, model, prompt_version, status, created_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows a row's vocabulary columns from the generated `string` to the
  * domain unions. As with `toDeal()`, a failure means the database vocabulary
@@ -73,7 +66,7 @@ function toAiFinding(row: Tables<'ai_findings'>): AiFinding {
  * list.
  */
 export async function listAiFindings(dealId: DealId): Promise<AiFinding[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(AI_FINDINGS_TABLE)
     .select(AI_FINDING_COLUMNS)
     .eq('deal_id', dealId)
@@ -89,7 +82,7 @@ export async function listAiFindings(dealId: DealId): Promise<AiFinding[]> {
 
 /** Reads one finding, or null when it does not exist or is not the caller's. */
 export async function getAiFinding(id: AiFindingId): Promise<AiFinding | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(AI_FINDINGS_TABLE)
     .select(AI_FINDING_COLUMNS)
     .eq('id', id)
@@ -112,7 +105,7 @@ export async function getAiFinding(id: AiFindingId): Promise<AiFinding | null> {
 export async function createAiFinding(
   input: CreateAiFindingInput,
 ): Promise<AiFinding> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(AI_FINDINGS_TABLE)
     .insert({
       deal_id: input.deal_id,
@@ -143,7 +136,7 @@ export async function updateAiFindingStatus(
   id: AiFindingId,
   status: AiFindingStatus,
 ): Promise<AiFinding | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(AI_FINDINGS_TABLE)
     .update({ status })
     .eq('id', id)

@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, TablesUpdate } from '../database.types'
+import type { TablesUpdate } from '../database.types'
 import type {
   Account,
   AccountId,
@@ -39,14 +37,9 @@ const ACCOUNTS_TABLE = 'accounts'
 const ACCOUNT_COLUMNS =
   'id, name, region, country_code, segment, industry, created_at, updated_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /** Lists the caller's accounts alphabetically by name. */
 export async function listAccounts(): Promise<Account[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(ACCOUNTS_TABLE)
     .select(ACCOUNT_COLUMNS)
     .order('name', { ascending: true })
@@ -60,7 +53,7 @@ export async function listAccounts(): Promise<Account[]> {
 
 /** Reads one account, or null when it does not exist or is not the caller's. */
 export async function getAccount(id: AccountId): Promise<Account | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(ACCOUNTS_TABLE)
     .select(ACCOUNT_COLUMNS)
     .eq('id', id)
@@ -81,7 +74,7 @@ export async function getAccount(id: AccountId): Promise<Account | null> {
  * Server Action, and the database constraints are the final authority.
  */
 export async function createAccount(input: CreateAccountInput): Promise<Account> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(ACCOUNTS_TABLE)
     .insert({
       name: input.name,
@@ -123,7 +116,7 @@ export async function updateAccount(
     return getAccount(id)
   }
 
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(ACCOUNTS_TABLE)
     .update(patch)
     .eq('id', id)
@@ -145,7 +138,7 @@ export async function updateAccount(
  * references `accounts` with `on delete cascade`.
  */
 export async function deleteAccount(id: AccountId): Promise<Account | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(ACCOUNTS_TABLE)
     .delete()
     .eq('id', id)
