@@ -1,3 +1,5 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
+
 import { getSupabaseClient } from '../supabase'
 import { requireUserId } from './auth'
 import { NotesDatabaseError } from './errors'
@@ -34,6 +36,16 @@ import { NotesDatabaseError } from './errors'
  *   https://supabase.com/docs/reference/javascript/select
  *   https://supabase.com/docs/reference/javascript/insert
  */
+
+/**
+ * The request-scoped client, untyped: the one deliberate exception to the
+ * typed client in app/lib/db. NoteSpace's tables are not in the canonical
+ * schema (app/lib/database.types.ts), so a client typed against it cannot name
+ * them. This goes when the NoteSpace code is deleted.
+ */
+function untypedClient(): SupabaseClient {
+  return getSupabaseClient()
+}
 
 const NOTES_TABLE = 'notes'
 const COLLECTIONS_TABLE = 'collections'
@@ -134,7 +146,7 @@ export type UpdateNoteInput = {
  * this resolves to an empty array rather than an error.
  */
 export async function listNotes(): Promise<Note[]> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .select(NOTE_COLUMNS)
     .order('created_at', { ascending: false })
@@ -152,7 +164,7 @@ export async function listNotes(): Promise<Note[]> {
  * Uses `.maybeSingle()` so a missing row is a null result rather than an error.
  */
 export async function getNote(id: string): Promise<Note | null> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .select(NOTE_COLUMNS)
     .eq('id', id)
@@ -178,7 +190,7 @@ export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
   // no user_id field, so a caller cannot supply one even by mistake.
   const userId = await requireUserId()
 
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .insert({
       title: input.title ?? null,
@@ -221,7 +233,7 @@ export async function updateNote(
     return getNote(id)
   }
 
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .update(patch)
     .eq('id', id)
@@ -240,7 +252,7 @@ export async function updateNote(
  * matched. `.select()` is chained so the caller can tell the two apart.
  */
 export async function deleteNote(id: string): Promise<Note | null> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .delete()
     .eq('id', id)
@@ -264,7 +276,7 @@ export async function deleteNote(id: string): Promise<Note | null> {
  * resolves to an empty array rather than an error.
  */
 export async function listCollections(): Promise<Collection[]> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(COLLECTIONS_TABLE)
     .select(COLLECTION_COLUMNS)
     .order('name', { ascending: true })
@@ -286,7 +298,7 @@ export async function listCollections(): Promise<Collection[]> {
 export async function createCollection(name: string): Promise<Collection> {
   const userId = await requireUserId()
 
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(COLLECTIONS_TABLE)
     .insert({ name, user_id: userId })
     .select(COLLECTION_COLUMNS)
@@ -317,7 +329,7 @@ export async function setNoteCollection(
   noteId: string,
   collectionId: string | null,
 ): Promise<Note | null> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTES_TABLE)
     .update({ collection_id: collectionId })
     .eq('id', noteId)
@@ -338,7 +350,7 @@ export async function setNoteCollection(
  * matching policy resolves to an empty array rather than an error.
  */
 export async function listTags(): Promise<Tag[]> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(TAGS_TABLE)
     .select(TAG_COLUMNS)
     .order('name', { ascending: true })
@@ -357,7 +369,7 @@ export async function listTags(): Promise<Tag[]> {
  * round trip rather than a lookup per pairing.
  */
 export async function listTagsForNote(noteId: string): Promise<Tag[]> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTE_TAGS_TABLE)
     .select(EMBEDDED_TAG_COLUMNS)
     .eq('note_id', noteId)
@@ -383,7 +395,7 @@ export async function listTagsForNote(noteId: string): Promise<Tag[]> {
  * per collection.
  */
 export async function listTagsByNote(): Promise<Map<string, Tag[]>> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTE_TAGS_TABLE)
     .select(`note_id, ${EMBEDDED_TAG_COLUMNS}`)
 
@@ -424,7 +436,7 @@ export async function listTagsByNote(): Promise<Map<string, Tag[]>> {
 export async function createTag(name: string): Promise<Tag> {
   const userId = await requireUserId()
 
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(TAGS_TABLE)
     .insert({ name, user_id: userId })
     .select(TAG_COLUMNS)
@@ -448,7 +460,7 @@ export async function addTagToNote(
   noteId: string,
   tagId: string,
 ): Promise<void> {
-  const { error } = await getSupabaseClient()
+  const { error } = await untypedClient()
     .from(NOTE_TAGS_TABLE)
     .upsert(
       { note_id: noteId, tag_id: tagId },
@@ -470,7 +482,7 @@ export async function removeTagFromNote(
   noteId: string,
   tagId: string,
 ): Promise<boolean> {
-  const { data, error } = await getSupabaseClient()
+  const { data, error } = await untypedClient()
     .from(NOTE_TAGS_TABLE)
     .delete()
     .eq('note_id', noteId)

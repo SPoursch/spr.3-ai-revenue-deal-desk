@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables } from '../database.types'
+import type { Tables } from '../database.types'
 import {
   isExceptionKind,
   isExceptionOrigin,
@@ -56,11 +54,6 @@ const EXCEPTIONS_TABLE = 'exceptions'
 const EXCEPTION_COLUMNS =
   'id, deal_id, rule_key, rule_version, kind, severity, title, why, origin, source_finding_id, provision_id, status, status_changed_at, created_at, updated_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows a row's vocabulary columns from the generated `string` to the
  * domain unions. As with `toDeal()`, a failure means the database vocabulary
@@ -91,7 +84,7 @@ function toDealException(row: Tables<'exceptions'>): DealException {
  * or is not the caller's yields an empty list.
  */
 export async function listExceptions(dealId: DealId): Promise<DealException[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EXCEPTIONS_TABLE)
     .select(EXCEPTION_COLUMNS)
     .eq('deal_id', dealId)
@@ -107,7 +100,7 @@ export async function listExceptions(dealId: DealId): Promise<DealException[]> {
 
 /** Reads one exception, or null when it does not exist or is not the caller's. */
 export async function getException(id: ExceptionId): Promise<DealException | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EXCEPTIONS_TABLE)
     .select(EXCEPTION_COLUMNS)
     .eq('id', id)
@@ -128,7 +121,7 @@ export async function getException(id: ExceptionId): Promise<DealException | nul
 export async function createException(
   input: CreateExceptionInput,
 ): Promise<DealException> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EXCEPTIONS_TABLE)
     .insert({
       deal_id: input.deal_id,
@@ -171,7 +164,7 @@ export async function updateExceptionStatus(
     )
   }
 
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(EXCEPTIONS_TABLE)
     .update({ status })
     .eq('id', id)

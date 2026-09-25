@@ -1,6 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-
-import type { Database, Tables } from '../database.types'
+import type { Tables } from '../database.types'
 import {
   isDecisionType,
   validateDecisionInput,
@@ -54,11 +52,6 @@ const DECISIONS_TABLE = 'decisions'
 const DECISION_COLUMNS =
   'id, deal_id, exception_id, decision_type, rationale, conditions, considered_finding_id, created_at'
 
-/** The request-scoped client, typed against the canonical schema. */
-function client(): SupabaseClient<Database> {
-  return getSupabaseClient()
-}
-
 /**
  * Narrows a row's `decision_type` from the generated `string` to the domain
  * union. A failure means the database vocabulary changed without domain.ts
@@ -100,7 +93,7 @@ export async function recordDecision(
 
   const { value } = validation
 
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DECISIONS_TABLE)
     .insert({
       deal_id: value.deal_id,
@@ -125,7 +118,7 @@ export async function recordDecision(
  * or is not the caller's yields an empty list.
  */
 export async function listDecisions(dealId: DealId): Promise<Decision[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DECISIONS_TABLE)
     .select(DECISION_COLUMNS)
     .eq('deal_id', dealId)
@@ -147,7 +140,7 @@ export async function listDecisions(dealId: DealId): Promise<Decision[]> {
 export async function listExceptionDecisions(
   exceptionId: ExceptionId,
 ): Promise<Decision[]> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DECISIONS_TABLE)
     .select(DECISION_COLUMNS)
     .eq('exception_id', exceptionId)
@@ -163,7 +156,7 @@ export async function listExceptionDecisions(
 
 /** Reads one Decision, or null when it does not exist or is not the caller's. */
 export async function getDecision(id: DecisionId): Promise<Decision | null> {
-  const { data, error } = await client()
+  const { data, error } = await getSupabaseClient()
     .from(DECISIONS_TABLE)
     .select(DECISION_COLUMNS)
     .eq('id', id)

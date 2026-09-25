@@ -5,6 +5,8 @@ import {
 import { type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
+import type { Database } from './database.types'
+
 /**
  * Supabase client wiring.
  *
@@ -58,10 +60,12 @@ function readCredentials(): { url: string; key: string } {
  * Shared by the request-scoped client below and by the proxy, so that the
  * credential reading and the client options exist in exactly one place.
  */
-function createClientWithCookies(cookieMethods: CookieMethodsServer) {
+function createClientWithCookies(
+  cookieMethods: CookieMethodsServer,
+): SupabaseClient<Database> {
   const { url, key } = readCredentials()
 
-  return createServerClient(url, key, { cookies: cookieMethods })
+  return createServerClient<Database>(url, key, { cookies: cookieMethods })
 }
 
 /**
@@ -76,7 +80,7 @@ function createClientWithCookies(cookieMethods: CookieMethodsServer) {
  * from Next.js 15 on. `@supabase/ssr` awaits them, so this function itself
  * stays synchronous and every existing call site in app/lib/db.ts is unchanged.
  */
-export function getSupabaseClient(): SupabaseClient {
+export function getSupabaseClient(): SupabaseClient<Database> {
   return createClientWithCookies({
     async getAll() {
       return (await cookies()).getAll()
@@ -106,7 +110,7 @@ export function getSupabaseClient(): SupabaseClient {
  */
 export function getProxySupabaseClient(
   cookieMethods: CookieMethodsServer,
-): SupabaseClient {
+): SupabaseClient<Database> {
   return createClientWithCookies(cookieMethods)
 }
 
