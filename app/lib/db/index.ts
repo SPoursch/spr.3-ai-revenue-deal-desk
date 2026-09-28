@@ -84,6 +84,7 @@ export type { AuthResult, AuthUser, EmailTokenType } from './auth'
 export {
   exchangeAuthCode,
   getAuthenticatedUser,
+  hasRecentSignIn,
   sendPasswordResetEmail,
   signInWithPassword,
   signOut,
