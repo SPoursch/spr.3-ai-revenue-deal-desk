@@ -76,3 +76,31 @@ describe('proxy session refresh', () => {
     }
   })
 })
+
+describe('proxy Content-Security-Policy (security scan L2)', () => {
+  function nonceOf(policy: string | null) {
+    return policy?.match(/'nonce-([^']+)'/)?.[1]
+  }
+
+  it.each([
+    ['nothing was refreshed', false],
+    ['the session was refreshed', true],
+  ])('sets a nonce-based CSP when %s', async (_label, refreshes) => {
+    refresh.happens = refreshes
+
+    const response = await proxy(workspaceRequest())
+    const policy = response.headers.get('Content-Security-Policy')
+
+    expect(nonceOf(policy)).toBeTruthy()
+    expect(policy).toContain(`frame-ancestors 'none'`)
+  })
+
+  it('uses a fresh nonce for every request', async () => {
+    const first = await proxy(workspaceRequest())
+    const second = await proxy(workspaceRequest())
+
+    expect(nonceOf(first.headers.get('Content-Security-Policy'))).not.toBe(
+      nonceOf(second.headers.get('Content-Security-Policy')),
+    )
+  })
+})

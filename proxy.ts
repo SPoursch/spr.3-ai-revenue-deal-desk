@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
 
+import { buildContentSecurityPolicy } from '@/app/lib/content-security-policy'
 import { getProxySupabaseClient } from '@/app/lib/supabase'
 
 /**
@@ -19,9 +20,23 @@ import { getProxySupabaseClient } from '@/app/lib/supabase'
  * the page or layout that renders protected data rather than relying on a
  * matcher that a later refactor could quietly stop covering. That check lives
  * in app/workspace/layout.tsx.
+ *
+ * It also sets the Content-Security-Policy. The policy carries a fresh nonce
+ * per request, so it cannot be a static header in next.config.ts: it is set
+ * on the request, where Next.js reads the nonce to stamp its own scripts, and
+ * on the response, where the browser enforces it.
  */
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({ request })
+  const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
+  const contentSecurityPolicy = buildContentSecurityPolicy(nonce)
+
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.set('x-nonce', nonce)
+  requestHeaders.set('Content-Security-Policy', contentSecurityPolicy)
+
+  const forward = () => NextResponse.next({ request: { headers: requestHeaders } })
+
+  let response = forward()
 
   const supabase = getProxySupabaseClient({
     getAll() {
@@ -30,7 +45,7 @@ export async function proxy(request: NextRequest) {
     setAll(cookiesToSet, headers) {
       // Rebuild the response so the refreshed cookies are attached to both the
       // request passed onward and the response sent back to the browser.
-      response = NextResponse.next({ request })
+      response = forward()
 
       for (const { name, value, options } of cookiesToSet) {
         response.cookies.set(name, value, options)
@@ -48,6 +63,8 @@ export async function proxy(request: NextRequest) {
   // Verifies the token signature and refreshes it when it has expired. The
   // result is intentionally unused: this call exists for its cookie writes.
   await supabase.auth.getClaims()
+
+  response.headers.set('Content-Security-Policy', contentSecurityPolicy)
 
   return response
 }

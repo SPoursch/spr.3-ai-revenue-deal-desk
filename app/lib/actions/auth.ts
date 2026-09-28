@@ -1,9 +1,10 @@
 'use server'
 
-import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
+import { APP_URL } from '../app-url'
 import {
+  hasRecentSignIn,
   sendPasswordResetEmail,
   signInWithPassword,
   signOut,
@@ -44,6 +45,13 @@ const CONFIRM_PATH = '/auth/confirm'
 /** Supabase Auth's own minimum. Rejecting shorter input here saves a round trip. */
 const MIN_PASSWORD_LENGTH = 6
 
+/**
+ * How recently the session must have been established for a password change.
+ * Long enough to follow a reset link and type a new password, short enough
+ * that an old or stolen session cannot be used.
+ */
+const RECENT_SIGN_IN_SECONDS = 10 * 60
+
 type Credentials = { email: string; password: string }
 
 /**
@@ -79,38 +87,6 @@ function readCredentials(
   }
 
   return { ok: true, value: { email, password: rawPassword } }
-}
-
-/**
- * The origin this request arrived on, or null when it cannot be determined.
- *
- * Used to build the URLs Supabase redirects back to, so no host is hardcoded
- * and the flows work unchanged on localhost. A Server Action is a POST, so the
- * browser sends `Origin` and it already carries the scheme. `Host` is the
- * fallback and needs a scheme added: `x-forwarded-proto` behind a proxy,
- * otherwise http, which is what a localhost dev server actually serves.
- *
- * Whatever this returns must still appear in the Supabase redirect allow-list;
- * that is a dashboard setting and is what stops an arbitrary origin being used.
- */
-async function requestOrigin(): Promise<string | null> {
-  const requestHeaders = await headers()
-
-  const origin = requestHeaders.get('origin')
-
-  if (origin) {
-    return origin
-  }
-
-  const host = requestHeaders.get('host')
-
-  if (!host) {
-    return null
-  }
-
-  const proto = requestHeaders.get('x-forwarded-proto') ?? 'http'
-
-  return `${proto}://${host}`
 }
 
 /**
@@ -188,19 +164,12 @@ export async function signOutAction(): Promise<void> {
 /**
  * Begins Google sign-in by redirecting to the provider.
  *
- * The callback URL is built from the request's own origin rather than from a
- * configured value, so no new environment variable is needed and the flow
- * works unchanged on localhost. The origin must still be listed in the
- * Supabase redirect allow-list, which is a dashboard setting.
+ * The callback URL is built from the fixed canonical origin in
+ * app/lib/app-url.ts, never from request headers. It must still be listed in
+ * the Supabase redirect allow-list, which is a dashboard setting.
  */
 export async function signInWithGoogleAction(): Promise<NoteActionState> {
-  const baseUrl = await requestOrigin()
-
-  if (!baseUrl) {
-    return failure('Google sign-in is unavailable right now.')
-  }
-
-  const { url, message } = await startGoogleSignIn(`${baseUrl}/auth/callback`)
+  const { url, message } = await startGoogleSignIn(`${APP_URL}/auth/callback`)
 
   if (!url) {
     return failure(message ?? 'Google sign-in is unavailable right now.')
@@ -241,13 +210,7 @@ export async function requestPasswordResetAction(
     return failure('Enter a valid email address.')
   }
 
-  const baseUrl = await requestOrigin()
-
-  if (!baseUrl) {
-    return failure('Password reset is unavailable right now.')
-  }
-
-  const result = await sendPasswordResetEmail(email, `${baseUrl}${CONFIRM_PATH}`)
+  const result = await sendPasswordResetEmail(email, `${APP_URL}${CONFIRM_PATH}`)
 
   if (!result.ok) {
     // The underlying message is logged in app/lib/db.ts, not shown: a raw
@@ -270,6 +233,17 @@ export async function requestPasswordResetAction(
  * Reaching here normally means /auth/confirm has just verified a recovery
  * token and established the session it carried. A signed-in user changing
  * their own password uses the same path.
+ *
+ * The underlying enforcement against a stolen session changing the password
+ * is Supabase Auth's "Secure password change" setting, enabled on the hosted
+ * gtm-stack-fit project: Supabase itself refuses the update unless the user
+ * signed in recently or reauthenticated.
+ *
+ * The recent-sign-in check here (`hasRecentSignIn`) is an additional defence
+ * layer, not a replacement for that setting. It rejects old sessions before
+ * the request reaches Supabase, with a stricter window, and keeps the action
+ * safe if the dashboard setting is ever switched off. It does not on its own
+ * rule out account takeover: a session stolen within the window still passes.
  */
 export async function updatePasswordAction(
   _state: NoteActionState,
@@ -280,6 +254,12 @@ export async function updatePasswordAction(
   if (denied) {
     return failure(
       'That reset link is no longer valid. Request a new one and try again.',
+    )
+  }
+
+  if (!(await hasRecentSignIn(RECENT_SIGN_IN_SECONDS))) {
+    return failure(
+      'For your security, request a new reset link and set your password from it.',
     )
   }
 

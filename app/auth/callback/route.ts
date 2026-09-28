@@ -23,6 +23,26 @@ import { exchangeAuthCode } from '@/app/lib/db'
 const WORKSPACE_PATH = '/workspace'
 const LOGIN_PATH = '/login'
 
+/** Longest provider-supplied error text that is written to the log. */
+const MAX_LOGGED_ERROR_LENGTH = 200
+
+/**
+ * Makes a provider-supplied error string safe to log.
+ *
+ * The value arrives in the query string, so anyone can put anything in it.
+ * Control characters (including newlines, which could forge extra log lines)
+ * are replaced, and the text is truncated so a crafted URL cannot flood the
+ * log. What remains is still enough to tell a cancelled consent screen from a
+ * misconfigured provider.
+ */
+function sanitizeProviderError(value: string): string {
+  const printable = value.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').trim()
+
+  return printable.length > MAX_LOGGED_ERROR_LENGTH
+    ? `${printable.slice(0, MAX_LOGGED_ERROR_LENGTH)}… (truncated)`
+    : printable
+}
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
 
@@ -32,7 +52,10 @@ export async function GET(request: Request) {
     searchParams.get('error_description') ?? searchParams.get('error')
 
   if (providerError) {
-    console.error('[auth] Google returned an error:', providerError)
+    console.error(
+      '[auth] Google returned an error:',
+      sanitizeProviderError(providerError),
+    )
 
     return NextResponse.redirect(`${origin}${LOGIN_PATH}?error=google`)
   }

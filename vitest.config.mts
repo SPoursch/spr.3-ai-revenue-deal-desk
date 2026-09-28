@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { parseEnv } from 'node:util'
 import { defineConfig } from 'vitest/config'
 
@@ -26,6 +27,10 @@ function readEnvFile(path: string): Record<string, string> {
 }
 
 export default defineConfig({
+  // The `@/` import alias from tsconfig.json, used by proxy.ts and the routes.
+  resolve: {
+    alias: { '@': fileURLToPath(new URL('.', import.meta.url)) },
+  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

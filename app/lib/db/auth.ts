@@ -72,6 +72,13 @@ const SIGN_UP_FAILED_MESSAGE = 'Could not create the account. Please try again.'
 const WEAK_PASSWORD_MESSAGE =
   'That password is too weak. Choose a longer or less common one.'
 
+/**
+ * Shown for any other failed auth call. Supabase's own text can describe rate
+ * limits, token state or password policy internals, so it is logged on the
+ * server and never returned.
+ */
+const AUTH_FAILED_MESSAGE = 'Something went wrong. Please try again.'
+
 /** Outcome of a sign-in, sign-up or sign-out attempt. */
 export type AuthResult = {
   ok: boolean
@@ -114,6 +121,41 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
       readStringClaim(userMetadata.picture),
     provider: readStringClaim(appMetadata.provider),
   }
+}
+
+/**
+ * Whether the current session was established within the last `maxAgeSeconds`.
+ *
+ * Reads the `amr` claim of the verified token, which records when each
+ * authentication method (password, OAuth, recovery link) was last used. A
+ * token refresh keeps those timestamps, so an old session stays old however
+ * often it is refreshed. The newest entry is the moment the user last proved
+ * control of the account.
+ *
+ * Fails closed: no session, no `amr`, or entries without timestamps (a custom
+ * access-token hook may emit plain strings) all count as not recent.
+ */
+export async function hasRecentSignIn(maxAgeSeconds: number): Promise<boolean> {
+  const { data, error } = await getSupabaseClient().auth.getClaims()
+
+  if (error || !data?.claims) {
+    return false
+  }
+
+  const timestamps = (data.claims.amr ?? []).flatMap((entry) =>
+    typeof entry === 'object' && typeof entry.timestamp === 'number'
+      ? [entry.timestamp]
+      : [],
+  )
+
+  if (timestamps.length === 0) {
+    return false
+  }
+
+  const ageSeconds = Date.now() / 1000 - Math.max(...timestamps)
+
+  // A minute of tolerance for clock skew between Supabase Auth and this server.
+  return ageSeconds >= -60 && ageSeconds <= maxAgeSeconds
 }
 
 /**
@@ -205,7 +247,7 @@ export async function signOut(): Promise<AuthResult> {
   if (error) {
     console.error('[auth] sign-out failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: AUTH_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
@@ -253,7 +295,7 @@ export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   if (error) {
     console.error('[auth] code exchange failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: AUTH_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
@@ -263,11 +305,9 @@ export async function exchangeAuthCode(code: string): Promise<AuthResult> {
  * Sends a password-reset email.
  *
  * `redirectTo` is where the emailed link lands once Supabase has verified the
- * token. It is built by the caller from the current request's origin — see
- * `requestOrigin()` in app/lib/actions/auth.ts — so nothing here hardcodes a
- * host, and the flow works unchanged on localhost and anywhere else. The URL
- * must still appear in the Supabase redirect allow-list, which is a dashboard
- * setting.
+ * token. It is built by the caller from the fixed canonical origin in
+ * app/lib/app-url.ts, never from request headers. The URL must still appear
+ * in the Supabase redirect allow-list, which is a dashboard setting.
  *
  * Success is reported the same way whether or not the address has an account.
  * Supabase deliberately does not distinguish the two, and neither does this
@@ -286,7 +326,7 @@ export async function sendPasswordResetEmail(
   if (error) {
     console.error('[auth] password reset email failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: AUTH_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
@@ -323,7 +363,7 @@ export async function verifyEmailToken(
   if (error) {
     console.error('[auth] email token verification failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: AUTH_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
@@ -347,7 +387,7 @@ export async function updatePassword(password: string): Promise<AuthResult> {
   if (error) {
     console.error('[auth] password update failed:', error)
 
-    return { ok: false, message: error.message }
+    return { ok: false, message: AUTH_FAILED_MESSAGE }
   }
 
   return { ok: true, message: null }
