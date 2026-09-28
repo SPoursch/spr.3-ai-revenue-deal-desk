@@ -27,13 +27,20 @@ export async function proxy(request: NextRequest) {
     getAll() {
       return request.cookies.getAll()
     },
-    setAll(cookiesToSet) {
+    setAll(cookiesToSet, headers) {
       // Rebuild the response so the refreshed cookies are attached to both the
       // request passed onward and the response sent back to the browser.
       response = NextResponse.next({ request })
 
       for (const { name, value, options } of cookiesToSet) {
         response.cookies.set(name, value, options)
+      }
+
+      // The no-cache headers @supabase/ssr sends with refreshed auth cookies
+      // (Cache-Control, Expires, Pragma), so a CDN never caches a response
+      // that carries one visitor's session and serves it to another.
+      for (const [key, value] of Object.entries(headers)) {
+        response.headers.set(key, value)
       }
     },
   })
