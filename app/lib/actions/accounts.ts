@@ -21,6 +21,8 @@ import { requireUser } from './require-auth'
 const WORKSPACE_PATH = '/workspace'
 const SIGNED_OUT_MESSAGE = 'You need to be signed in.'
 const INVALID_MESSAGE = 'Check the highlighted fields and try again.'
+const INPUT_REJECTED_MESSAGE =
+  'The account could not be saved with these details. Check them and try again.'
 
 /**
  * Creates an account, then continues to a new deal with that account chosen:
@@ -58,6 +60,13 @@ export async function createAccountAction(
         { name: 'You already have an account with that name.' },
         values,
       )
+    }
+
+    // Other rejected input would fail again on retry, so say what to fix.
+    if (error instanceof DealDeskDatabaseError && error.kind === 'invalid_input') {
+      console.error('[accounts] insert rejected:', error.message)
+
+      return failure(INPUT_REJECTED_MESSAGE, {}, values)
     }
 
     console.error('[accounts] insert failed:', error)

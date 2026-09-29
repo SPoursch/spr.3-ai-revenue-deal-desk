@@ -143,6 +143,22 @@ describe('createAccountAction', () => {
     expect(consoleError).toHaveBeenCalled()
   })
 
+  it('asks the user to check the details for other rejected input', async () => {
+    db.createAccount.mockRejectedValue(dbError('accounts', '23514'))
+
+    const result = await createAccountAction(
+      initialDealDeskActionState,
+      form({ name: 'Acme GmbH' }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/could not be saved with these details/i)
+    expect(result.fieldErrors).toEqual({})
+    expect(result.values).toMatchObject({ name: 'Acme GmbH' })
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+    expect(consoleError).toHaveBeenCalled()
+  })
+
   it('shows a generic message for an unexpected failure and logs it', async () => {
     db.createAccount.mockRejectedValue(new Error('connection reset'))
 
