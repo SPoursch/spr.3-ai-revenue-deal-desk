@@ -56,6 +56,9 @@ export default async function Page() {
           </p>
         </div>
         <div className="flex gap-3">
+          <Link href="/workspace/accounts" className={SECONDARY_LINK_CLASS}>
+            Accounts
+          </Link>
           <Link href="/workspace/accounts/new" className={SECONDARY_LINK_CLASS}>
             New account
           </Link>

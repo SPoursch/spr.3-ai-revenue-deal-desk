@@ -1,9 +1,14 @@
 import {
   isDealStage,
   isDealType,
+  type Account,
   type CreateAccountInput,
   type CreateDealInput,
+  type Deal,
   type DealId,
+  type DealStage,
+  type DealType,
+  type UpdateDealInput,
 } from './domain'
 
 /**
@@ -220,19 +225,20 @@ export function parseAccountForm(formData: FormData): FormResult<CreateAccountIn
   }
 }
 
-/** Parses the deal form into `CreateDealInput`. */
-export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
-  const read = new FieldReader(formData)
+/** The deal fields shared by create and edit: name, type, stage, terms, dates. */
+type DealTerms = Omit<UpdateDealInput, 'deal_type' | 'stage'> & {
+  name: string
+  deal_type: DealType
+  stage: DealStage
+  arr_eur: number
+}
 
-  const accountId = readText(formData, 'accountId')
-  if (accountId === null || !UUID_PATTERN.test(accountId)) {
-    read.errorFor('accountId', 'Choose the account this deal belongs to.')
-  }
-
-  const predecessorDealId = read.optionalUuid(
-    'predecessorDealId',
-    'Choose the deal this one follows from the list.',
-  )
+/**
+ * Reads the fields a deal has whether it is being created or edited,
+ * recording any errors on `read`. Returns null when a required field is
+ * missing or invalid.
+ */
+function readDealTerms(read: FieldReader, formData: FormData): DealTerms | null {
   const name = read.requiredName('name', 'a deal name')
 
   const dealType = formData.get('dealType')
@@ -267,25 +273,13 @@ export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
     read.errorFor('autoRenew', 'Choose whether the deal renews automatically.')
   }
 
-  // A renewal is a new deal linked to its predecessor (U13).
-  if (dealType === 'renewal' && predecessorDealId === null && !read.errors.predecessorDealId) {
-    read.errorFor('predecessorDealId', 'Choose the deal this renewal follows.')
+  if (name === null || arrEur === null || !isDealType(dealType) || !isDealStage(stage)) {
+    return null
   }
 
-  if (
-    Object.keys(read.errors).length > 0 ||
-    accountId === null ||
-    name === null ||
-    arrEur === null ||
-    !isDealType(dealType) ||
-    !isDealStage(stage)
-  ) {
-    return { ok: false, fieldErrors: read.errors }
-  }
-
-  const base = {
-    account_id: accountId,
+  return {
     name,
+    deal_type: dealType,
     stage,
     arr_eur: arrEur,
     tcv_eur: tcvEur,
@@ -298,6 +292,39 @@ export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
     notice_period_days: noticePeriodDays,
     auto_renew: autoRenew,
   }
+}
+
+/** Parses the deal form into `CreateDealInput`. */
+export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
+  const read = new FieldReader(formData)
+
+  const accountId = readText(formData, 'accountId')
+  if (accountId === null || !UUID_PATTERN.test(accountId)) {
+    read.errorFor('accountId', 'Choose the account this deal belongs to.')
+  }
+
+  const predecessorDealId = read.optionalUuid(
+    'predecessorDealId',
+    'Choose the deal this one follows from the list.',
+  )
+  const terms = readDealTerms(read, formData)
+
+  // A renewal is a new deal linked to its predecessor (U13). Read from the
+  // submission, so this is reported even when other fields are invalid.
+  if (
+    formData.get('dealType') === 'renewal' &&
+    predecessorDealId === null &&
+    !read.errors.predecessorDealId
+  ) {
+    read.errorFor('predecessorDealId', 'Choose the deal this renewal follows.')
+  }
+
+  if (Object.keys(read.errors).length > 0 || accountId === null || terms === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  const { deal_type: dealType, ...rest } = terms
+  const base = { ...rest, account_id: accountId }
 
   const value: CreateDealInput =
     dealType === 'renewal'
@@ -305,4 +332,75 @@ export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
       : { ...base, deal_type: dealType, predecessor_deal_id: predecessorDealId }
 
   return { ok: true, value }
+}
+
+/**
+ * Parses the edit-deal form into `UpdateDealInput`.
+ *
+ * The account and the predecessor are fixed when a deal is created (the
+ * database grants no UPDATE on them), so the form cannot change them and
+ * anything submitted for them is ignored. For the same reason a deal can
+ * only become a renewal if it already has a predecessor.
+ */
+export function parseDealUpdateForm(
+  formData: FormData,
+  { hasPredecessor }: { hasPredecessor: boolean },
+): FormResult<UpdateDealInput> {
+  const read = new FieldReader(formData)
+  const terms = readDealTerms(read, formData)
+
+  // Read from the submission, so this is reported even when other fields
+  // are invalid.
+  if (formData.get('dealType') === 'renewal' && !hasPredecessor) {
+    read.errorFor(
+      'dealType',
+      'Only a deal created as a renewal of another deal can be a renewal.',
+    )
+  }
+
+  if (Object.keys(read.errors).length > 0 || terms === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value: terms }
+}
+
+/** Whether a value is a uuid, the shape of every record id. */
+export function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_PATTERN.test(value)
+}
+
+/** A stored number as the form shows it, or '' when it is not set. */
+function toFormNumber(value: number | null): string {
+  return value === null ? '' : String(value)
+}
+
+/** An existing account as the account form's starting values. */
+export function toAccountFormValues(account: Account): Record<string, string> {
+  return {
+    name: account.name,
+    region: account.region ?? '',
+    countryCode: account.country_code ?? '',
+    segment: account.segment ?? '',
+    industry: account.industry ?? '',
+  }
+}
+
+/** An existing deal as the deal form's starting values. */
+export function toDealFormValues(deal: Deal): Record<string, string> {
+  return {
+    name: deal.name,
+    dealType: deal.deal_type,
+    stage: deal.stage,
+    arrEur: toFormNumber(deal.arr_eur),
+    tcvEur: toFormNumber(deal.tcv_eur),
+    listPriceEur: toFormNumber(deal.list_price_eur),
+    discountPct: toFormNumber(deal.discount_pct),
+    termMonths: toFormNumber(deal.term_months),
+    startDate: deal.start_date ?? '',
+    endDate: deal.end_date ?? '',
+    renewalDate: deal.renewal_date ?? '',
+    noticePeriodDays: toFormNumber(deal.notice_period_days),
+    autoRenew: deal.auto_renew === null ? '' : deal.auto_renew ? 'yes' : 'no',
+  }
 }

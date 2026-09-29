@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseAccountForm, parseDealForm } from '../../app/lib/deal-desk/forms'
+import {
+  isUuid,
+  parseAccountForm,
+  parseDealForm,
+  parseDealUpdateForm,
+  toAccountFormValues,
+  toDealFormValues,
+} from '../../app/lib/deal-desk/forms'
 
 /**
  * Server-side parsing of the account and deal forms (Deal Records, slice 1).
@@ -220,6 +227,13 @@ describe('parseDealForm', () => {
     )
   })
 
+  it('reports a missing predecessor together with other invalid fields', () => {
+    const errors = dealErrors({ ...VALID_DEAL, dealType: 'renewal', arrEur: '-1' })
+
+    expect(errors).toHaveProperty('predecessorDealId')
+    expect(errors).toHaveProperty('arrEur')
+  })
+
   it('accepts a renewal that names its predecessor', () => {
     const result = parseDealForm(
       form({ ...VALID_DEAL, dealType: 'renewal', predecessorDealId: PREDECESSOR_ID }),
@@ -242,5 +256,142 @@ describe('parseDealForm', () => {
 
     expect(result.ok).toBe(true)
     expect(result.ok && Object.keys(result.value)).not.toContain('user_id')
+  })
+})
+
+describe('parseDealUpdateForm', () => {
+  const VALID_UPDATE = {
+    name: 'Acme 2027',
+    dealType: 'expansion',
+    stage: 'contracting',
+    arrEur: '75000.50',
+  }
+
+  it('reads the editable fields and never the account or predecessor', () => {
+    const result = parseDealUpdateForm(
+      form({
+        ...VALID_UPDATE,
+        accountId: ACCOUNT_ID,
+        predecessorDealId: PREDECESSOR_ID,
+        user_id: 'someone-else',
+      }),
+      { hasPredecessor: false },
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        name: 'Acme 2027',
+        deal_type: 'expansion',
+        stage: 'contracting',
+        arr_eur: 75000.5,
+        tcv_eur: null,
+        list_price_eur: null,
+        discount_pct: null,
+        term_months: null,
+        start_date: null,
+        end_date: null,
+        renewal_date: null,
+        notice_period_days: null,
+        auto_renew: null,
+      },
+    })
+  })
+
+  it('applies the same field rules as creating a deal', () => {
+    const result = parseDealUpdateForm(
+      form({ ...VALID_UPDATE, arrEur: '-1', discountPct: '101', stage: 'won' }),
+      { hasPredecessor: false },
+    )
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && Object.keys(result.fieldErrors).sort()).toEqual(
+      ['arrEur', 'discountPct', 'stage'].sort(),
+    )
+  })
+
+  it('refuses to make a deal without a predecessor a renewal', () => {
+    const result = parseDealUpdateForm(form({ ...VALID_UPDATE, dealType: 'renewal' }), {
+      hasPredecessor: false,
+    })
+
+    expect(!result.ok && result.fieldErrors).toHaveProperty('dealType')
+  })
+
+  it('lets a deal that has a predecessor stay a renewal', () => {
+    const result = parseDealUpdateForm(form({ ...VALID_UPDATE, dealType: 'renewal' }), {
+      hasPredecessor: true,
+    })
+
+    expect(result.ok && result.value.deal_type).toBe('renewal')
+  })
+})
+
+describe('isUuid', () => {
+  it.each([
+    [ACCOUNT_ID, true],
+    ['not-a-uuid', false],
+    ['', false],
+    [null, false],
+  ])('%j → %j', (value, expected) => {
+    expect(isUuid(value)).toBe(expected)
+  })
+})
+
+describe('form values from stored records', () => {
+  it('turns a deal into the edit form values, round-tripping through the parser', () => {
+    const values = toDealFormValues({
+      id: 'd',
+      account_id: ACCOUNT_ID,
+      predecessor_deal_id: null,
+      name: 'Acme 2027',
+      deal_type: 'new_business',
+      stage: 'negotiation',
+      arr_eur: 60000,
+      tcv_eur: null,
+      list_price_eur: 75000,
+      discount_pct: 20,
+      term_months: 12,
+      start_date: '2026-01-01',
+      end_date: null,
+      renewal_date: '2027-03-31',
+      notice_period_days: null,
+      auto_renew: false,
+      created_at: '',
+      updated_at: '',
+    })
+
+    expect(values).toMatchObject({
+      arrEur: '60000',
+      tcvEur: '',
+      listPriceEur: '75000',
+      discountPct: '20',
+      termMonths: '12',
+      endDate: '',
+      renewalDate: '2027-03-31',
+      autoRenew: 'no',
+    })
+    expect(parseDealUpdateForm(form(values), { hasPredecessor: false }).ok).toBe(true)
+  })
+
+  it('turns an account into the edit form values', () => {
+    expect(
+      toAccountFormValues({
+        id: 'a',
+        name: 'Acme GmbH',
+        region: null,
+        country_code: 'DE',
+        segment: 'Enterprise',
+        industry: null,
+        created_at: '',
+        updated_at: '',
+      }),
+    ).toEqual({
+      name: 'Acme GmbH',
+      region: '',
+      countryCode: 'DE',
+      segment: 'Enterprise',
+      industry: '',
+    })
   })
 })

@@ -18,6 +18,11 @@ import { DealDeskDatabaseError } from '../../app/lib/db/errors'
 const db = vi.hoisted(() => ({
   createAccount: vi.fn(),
   createDeal: vi.fn(),
+  deleteAccount: vi.fn(),
+  deleteDeal: vi.fn(),
+  getDeal: vi.fn(),
+  updateAccount: vi.fn(),
+  updateDeal: vi.fn(),
 }))
 
 const guard = vi.hoisted(() => ({ requireUser: vi.fn() }))
@@ -38,8 +43,16 @@ vi.mock('../../app/lib/actions/require-auth', () => guard)
 vi.mock('next/navigation', () => navigation)
 vi.mock('next/cache', () => cache)
 
-import { createAccountAction } from '../../app/lib/actions/accounts'
-import { createDealAction } from '../../app/lib/actions/deals'
+import {
+  createAccountAction,
+  deleteAccountAction,
+  updateAccountAction,
+} from '../../app/lib/actions/accounts'
+import {
+  createDealAction,
+  deleteDealAction,
+  updateDealAction,
+} from '../../app/lib/actions/deals'
 import { initialDealDeskActionState } from '../../app/lib/actions/deal-desk-action-state'
 
 const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111'
@@ -255,5 +268,267 @@ describe('createDealAction', () => {
     expect(result.message).toMatch(/could not create the deal/i)
     expect(JSON.stringify(result)).not.toContain('connection reset')
     expect(consoleError).toHaveBeenCalled()
+  })
+})
+
+const SIGNED_OUT = { ok: false, message: 'x', at: 1 }
+const NOT_YOURS = /no longer exists, or it is not one of yours/i
+
+describe('updateDealAction', () => {
+  const EDIT = {
+    dealId: DEAL_ID,
+    name: 'Acme 2027',
+    dealType: 'new_business',
+    stage: 'contracting',
+    arrEur: '75000.50',
+  }
+
+  it('refuses a signed-out caller before reading or writing', async () => {
+    guard.requireUser.mockResolvedValue(SIGNED_OUT)
+
+    const result = await updateDealAction(initialDealDeskActionState, form(EDIT))
+
+    expect(result.message).toMatch(/signed in/i)
+    expect(db.getDeal).not.toHaveBeenCalled()
+    expect(db.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('refuses a deal id that is not a uuid without touching the database', async () => {
+    const result = await updateDealAction(
+      initialDealDeskActionState,
+      form({ ...EDIT, dealId: 'x' }),
+    )
+
+    expect(result.message).toMatch(NOT_YOURS)
+    expect(db.getDeal).not.toHaveBeenCalled()
+  })
+
+  it('answers "not found" for a deal that is missing or not yours', async () => {
+    db.getDeal.mockResolvedValue(null)
+
+    const result = await updateDealAction(initialDealDeskActionState, form(EDIT))
+
+    expect(result.message).toMatch(NOT_YOURS)
+    expect(db.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('returns field errors and the typed values without writing', async () => {
+    db.getDeal.mockResolvedValue({ id: DEAL_ID, predecessor_deal_id: null })
+
+    const result = await updateDealAction(
+      initialDealDeskActionState,
+      form({ ...EDIT, dealType: 'renewal', arrEur: '-1' }),
+    )
+
+    expect(result.fieldErrors).toHaveProperty('dealType')
+    expect(result.fieldErrors).toHaveProperty('arrEur')
+    expect(result.values).toMatchObject({ arrEur: '-1' })
+    expect(db.updateDeal).not.toHaveBeenCalled()
+  })
+
+  it('updates only the editable fields, then opens the deal', async () => {
+    db.getDeal.mockResolvedValue({ id: DEAL_ID, predecessor_deal_id: null })
+    db.updateDeal.mockResolvedValue({ id: DEAL_ID })
+
+    await expect(
+      updateDealAction(
+        initialDealDeskActionState,
+        form({ ...EDIT, accountId: ACCOUNT_ID, user_id: 'someone-else' }),
+      ),
+    ).rejects.toThrow(`NEXT_REDIRECT /workspace/deals/${DEAL_ID}`)
+
+    const [id, patch] = db.updateDeal.mock.calls[0]
+    expect(id).toBe(DEAL_ID)
+    expect(patch).toMatchObject({ stage: 'contracting', arr_eur: 75000.5 })
+    for (const key of ['account_id', 'predecessor_deal_id', 'user_id']) {
+      expect(patch).not.toHaveProperty(key)
+    }
+    expect(cache.revalidatePath).toHaveBeenCalledWith('/workspace', 'layout')
+  })
+
+  it('shows a safe message when the update fails, and logs it', async () => {
+    db.getDeal.mockResolvedValue({ id: DEAL_ID, predecessor_deal_id: null })
+    db.updateDeal.mockRejectedValue(new Error('connection reset'))
+
+    const result = await updateDealAction(initialDealDeskActionState, form(EDIT))
+
+    expect(result.message).toMatch(/could not save the deal/i)
+    expect(JSON.stringify(result)).not.toContain('connection reset')
+    expect(consoleError).toHaveBeenCalled()
+  })
+})
+
+describe('deleteDealAction', () => {
+  it('refuses a signed-out caller before deleting', async () => {
+    guard.requireUser.mockResolvedValue(SIGNED_OUT)
+
+    const result = await deleteDealAction(initialDealDeskActionState, form({ dealId: DEAL_ID }))
+
+    expect(result.message).toMatch(/signed in/i)
+    expect(db.deleteDeal).not.toHaveBeenCalled()
+  })
+
+  it('refuses a deal id that is not a uuid', async () => {
+    const result = await deleteDealAction(initialDealDeskActionState, form({ dealId: 'x' }))
+
+    expect(result.message).toMatch(NOT_YOURS)
+    expect(db.deleteDeal).not.toHaveBeenCalled()
+  })
+
+  it('answers "not found" when nothing was deleted', async () => {
+    db.deleteDeal.mockResolvedValue(null)
+
+    const result = await deleteDealAction(initialDealDeskActionState, form({ dealId: DEAL_ID }))
+
+    expect(result.message).toMatch(NOT_YOURS)
+  })
+
+  it('explains that a linked renewal blocks the delete', async () => {
+    db.deleteDeal.mockRejectedValue(dbError('deals', '23514'))
+
+    const result = await deleteDealAction(initialDealDeskActionState, form({ dealId: DEAL_ID }))
+
+    expect(result.message).toMatch(/renewal is linked/i)
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+    expect(consoleError).toHaveBeenCalled()
+  })
+
+  it('deletes the deal, then returns to the list', async () => {
+    db.deleteDeal.mockResolvedValue({ id: DEAL_ID })
+
+    await expect(
+      deleteDealAction(initialDealDeskActionState, form({ dealId: DEAL_ID })),
+    ).rejects.toThrow('NEXT_REDIRECT /workspace')
+
+    expect(db.deleteDeal).toHaveBeenCalledWith(DEAL_ID)
+    expect(cache.revalidatePath).toHaveBeenCalledWith('/workspace', 'layout')
+  })
+})
+
+describe('updateAccountAction', () => {
+  it('refuses a signed-out caller before writing', async () => {
+    guard.requireUser.mockResolvedValue(SIGNED_OUT)
+
+    const result = await updateAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID, name: 'Acme' }),
+    )
+
+    expect(result.message).toMatch(/signed in/i)
+    expect(db.updateAccount).not.toHaveBeenCalled()
+  })
+
+  it('refuses a bad account id and invalid input without writing', async () => {
+    const badId = await updateAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: 'x', name: 'Acme' }),
+    )
+    const invalid = await updateAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID, name: '' }),
+    )
+
+    expect(badId.message).toMatch(NOT_YOURS)
+    expect(invalid.fieldErrors).toHaveProperty('name')
+    expect(db.updateAccount).not.toHaveBeenCalled()
+  })
+
+  it('answers "not found" for an account that is missing or not yours', async () => {
+    db.updateAccount.mockResolvedValue(null)
+
+    const result = await updateAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID, name: 'Acme' }),
+    )
+
+    expect(result.message).toMatch(NOT_YOURS)
+  })
+
+  it('names a duplicate account without showing the database text', async () => {
+    db.updateAccount.mockRejectedValue(dbError('accounts', '23505'))
+
+    const result = await updateAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID, name: 'Acme' }),
+    )
+
+    expect(result.fieldErrors.name).toMatch(/already have an account/i)
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+  })
+
+  it('updates from the parsed input only, then returns to the accounts', async () => {
+    db.updateAccount.mockResolvedValue({ id: ACCOUNT_ID })
+
+    await expect(
+      updateAccountAction(
+        initialDealDeskActionState,
+        form({ accountId: ACCOUNT_ID, name: ' Acme AG ', user_id: 'someone-else' }),
+      ),
+    ).rejects.toThrow('NEXT_REDIRECT /workspace/accounts')
+
+    expect(db.updateAccount).toHaveBeenCalledWith(ACCOUNT_ID, {
+      name: 'Acme AG',
+      region: null,
+      country_code: null,
+      segment: null,
+      industry: null,
+    })
+  })
+})
+
+describe('deleteAccountAction', () => {
+  it('refuses a signed-out caller before deleting', async () => {
+    guard.requireUser.mockResolvedValue(SIGNED_OUT)
+
+    const result = await deleteAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID }),
+    )
+
+    expect(result.message).toMatch(/signed in/i)
+    expect(db.deleteAccount).not.toHaveBeenCalled()
+  })
+
+  it('refuses an account id that is not a uuid', async () => {
+    const result = await deleteAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: 'x' }),
+    )
+
+    expect(result.message).toMatch(NOT_YOURS)
+    expect(db.deleteAccount).not.toHaveBeenCalled()
+  })
+
+  it('answers "not found" when nothing was deleted', async () => {
+    db.deleteAccount.mockResolvedValue(null)
+
+    const result = await deleteAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID }),
+    )
+
+    expect(result.message).toMatch(NOT_YOURS)
+  })
+
+  it('explains that a renewal on another account blocks the delete', async () => {
+    db.deleteAccount.mockRejectedValue(dbError('accounts', '23514'))
+
+    const result = await deleteAccountAction(
+      initialDealDeskActionState,
+      form({ accountId: ACCOUNT_ID }),
+    )
+
+    expect(result.message).toMatch(/renewal on another account/i)
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+  })
+
+  it('deletes the account, then returns to the accounts', async () => {
+    db.deleteAccount.mockResolvedValue({ id: ACCOUNT_ID })
+
+    await expect(
+      deleteAccountAction(initialDealDeskActionState, form({ accountId: ACCOUNT_ID })),
+    ).rejects.toThrow('NEXT_REDIRECT /workspace/accounts')
+
+    expect(db.deleteAccount).toHaveBeenCalledWith(ACCOUNT_ID)
   })
 })

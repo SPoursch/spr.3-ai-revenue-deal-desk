@@ -4,8 +4,14 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
 import type { Deal } from '../deal-desk/domain'
-import { DEAL_FORM_FIELDS, parseDealForm, readFormValues } from '../deal-desk/forms'
-import { createDeal, DealDeskDatabaseError } from '../db'
+import {
+  DEAL_FORM_FIELDS,
+  isUuid,
+  parseDealForm,
+  parseDealUpdateForm,
+  readFormValues,
+} from '../deal-desk/forms'
+import { createDeal, DealDeskDatabaseError, deleteDeal, getDeal, updateDeal } from '../db'
 import { failure, type DealDeskActionState } from './deal-desk-action-state'
 import { requireUser } from './require-auth'
 
@@ -23,6 +29,11 @@ const INVALID_MESSAGE = 'Check the highlighted fields and try again.'
 const INPUT_REJECTED_MESSAGE =
   'The deal could not be saved with these details. Check them and try again.'
 const CREATE_FAILED_MESSAGE = 'Could not create the deal. Please try again.'
+const NOT_FOUND_MESSAGE = 'This deal no longer exists, or it is not one of yours.'
+const UPDATE_FAILED_MESSAGE = 'Could not save the deal. Please try again.'
+const DELETE_FAILED_MESSAGE = 'Could not delete the deal. Please try again.'
+const HAS_RENEWAL_MESSAGE =
+  'This deal cannot be deleted while a renewal is linked to it. Delete the renewal first.'
 
 /** Creates a deal, then opens it. */
 export async function createDealAction(
@@ -72,4 +83,112 @@ export async function createDealAction(
 
   // Outside the try block: redirect() works by throwing.
   redirect(`${WORKSPACE_PATH}/deals/${deal.id}`)
+}
+
+/**
+ * Saves changes to a deal, then opens it.
+ *
+ * The submitted `dealId` only says which deal is meant: the deal is read and
+ * written as the caller, so row level security decides whether it is theirs,
+ * and someone else's reads the same as one that does not exist. The account
+ * and predecessor are never part of the update.
+ */
+export async function updateDealAction(
+  _state: DealDeskActionState,
+  formData: FormData,
+): Promise<DealDeskActionState> {
+  if (await requireUser()) {
+    return failure(SIGNED_OUT_MESSAGE)
+  }
+
+  const dealId = formData.get('dealId')
+  const values = readFormValues(formData, DEAL_FORM_FIELDS)
+
+  if (!isUuid(dealId)) {
+    return failure(NOT_FOUND_MESSAGE, {}, values)
+  }
+
+  let updated: Deal | null
+
+  try {
+    const current = await getDeal(dealId)
+
+    if (!current) {
+      return failure(NOT_FOUND_MESSAGE, {}, values)
+    }
+
+    const parsed = parseDealUpdateForm(formData, {
+      hasPredecessor: current.predecessor_deal_id !== null,
+    })
+
+    if (!parsed.ok) {
+      return failure(INVALID_MESSAGE, parsed.fieldErrors, values)
+    }
+
+    updated = await updateDeal(dealId, parsed.value)
+  } catch (error) {
+    if (error instanceof DealDeskDatabaseError && error.kind === 'invalid_input') {
+      console.error('[deals] update rejected:', error.message)
+
+      return failure(INPUT_REJECTED_MESSAGE, {}, values)
+    }
+
+    console.error('[deals] update failed:', error)
+
+    return failure(UPDATE_FAILED_MESSAGE, {}, values)
+  }
+
+  if (!updated) {
+    return failure(NOT_FOUND_MESSAGE, {}, values)
+  }
+
+  revalidatePath(WORKSPACE_PATH, 'layout')
+
+  // Outside the try block: redirect() works by throwing.
+  redirect(`${WORKSPACE_PATH}/deals/${updated.id}`)
+}
+
+/**
+ * Deletes a deal, and with it everything attached to it, then returns to the
+ * deal list. Reached only from the confirmation page.
+ */
+export async function deleteDealAction(
+  _state: DealDeskActionState,
+  formData: FormData,
+): Promise<DealDeskActionState> {
+  if (await requireUser()) {
+    return failure(SIGNED_OUT_MESSAGE)
+  }
+
+  const dealId = formData.get('dealId')
+
+  if (!isUuid(dealId)) {
+    return failure(NOT_FOUND_MESSAGE)
+  }
+
+  let deleted: Deal | null
+
+  try {
+    deleted = await deleteDeal(dealId)
+  } catch (error) {
+    // A renewal must keep its predecessor, so the database refuses to delete
+    // a deal a renewal points at (deals_renewal_requires_predecessor_check).
+    if (error instanceof DealDeskDatabaseError && error.cause.code === '23514') {
+      console.error('[deals] delete refused:', error.message)
+
+      return failure(HAS_RENEWAL_MESSAGE)
+    }
+
+    console.error('[deals] delete failed:', error)
+
+    return failure(DELETE_FAILED_MESSAGE)
+  }
+
+  if (!deleted) {
+    return failure(NOT_FOUND_MESSAGE)
+  }
+
+  revalidatePath(WORKSPACE_PATH, 'layout')
+
+  redirect(WORKSPACE_PATH)
 }

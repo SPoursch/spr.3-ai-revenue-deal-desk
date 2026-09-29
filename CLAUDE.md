@@ -97,9 +97,10 @@ destination, **not** the Sprint 3 scope (see "Scope").
 - In progress: Deal Records. Slice 1 is built: `/workspace` lists the user's
   deals, `/workspace/accounts/new` and `/workspace/deals/new` create records
   through the Server Actions in `app/lib/actions/accounts.ts` and `deals.ts`,
-  and `/workspace/deals/[dealId]` shows a deal. Editing, deleting, account
-  management and renewal lineage are the next Deal Records slices. There is
-  no AI module yet.
+  and `/workspace/deals/[dealId]` shows a deal. Slice 2 adds editing and
+  deleting deals and accounts (`…/edit`, `…/delete` with a confirmation page)
+  and the account list at `/workspace/accounts`. Renewal lineage is the next
+  Deal Records slice. There is no AI module yet.
 - Deployed on Vercel at https://ai-rev-deal-desk.vercel.app. Automatic Git
   deployments are disabled (`vercel.json`); production is deployed manually
   after review and the security scan.
