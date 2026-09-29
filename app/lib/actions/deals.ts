@@ -20,6 +20,8 @@ import { requireUser } from './require-auth'
 const WORKSPACE_PATH = '/workspace'
 const SIGNED_OUT_MESSAGE = 'You need to be signed in.'
 const INVALID_MESSAGE = 'Check the highlighted fields and try again.'
+const INPUT_REJECTED_MESSAGE =
+  'The deal could not be saved with these details. Check them and try again.'
 const CREATE_FAILED_MESSAGE = 'Could not create the deal. Please try again.'
 
 /** Creates a deal, then opens it. */
@@ -43,14 +45,25 @@ export async function createDealAction(
   try {
     deal = await createDeal(parsed.value)
   } catch (error) {
-    // An account or predecessor that is not the caller's is refused by the
-    // composite foreign keys and arrives here as rejected input; it reads the
-    // same as one that does not exist, so nothing about other users leaks.
-    if (error instanceof DealDeskDatabaseError) {
-      console.error(`[deals] insert failed (${error.kind}):`, error.message)
-    } else {
-      console.error('[deals] insert failed:', error)
+    // Rejected input will fail again on retry, so say what to fix. An account
+    // that is not the caller's is refused by the composite foreign key
+    // deals_account_fkey and reads the same as one that does not exist, so
+    // nothing about other users leaks.
+    if (error instanceof DealDeskDatabaseError && error.kind === 'invalid_input') {
+      console.error('[deals] insert rejected:', error.message)
+
+      if (error.cause.message.includes('deals_account_fkey')) {
+        return failure(
+          INVALID_MESSAGE,
+          { accountId: 'That account is not available. Choose one of your accounts.' },
+          values,
+        )
+      }
+
+      return failure(INPUT_REJECTED_MESSAGE, {}, values)
     }
+
+    console.error('[deals] insert failed:', error)
 
     return failure(CREATE_FAILED_MESSAGE, {}, values)
   }

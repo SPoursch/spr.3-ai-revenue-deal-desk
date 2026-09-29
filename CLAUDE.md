@@ -69,8 +69,9 @@ destination, **not** the Sprint 3 scope (see "Scope").
 - **Embeddings are optional.** If implemented: OpenAI `text-embedding-3-small`,
   server-side, stored with pgvector. They must not block the MVP; Postgres
   full-text search is the baseline retrieval.
-- **Playwright** for automated functional tests (not yet installed; installing
-  it is its own step).
+- **Playwright** for automated end-to-end tests (`tests/e2e/`,
+  `npm run test:e2e`), run in Chromium against a local dev server as the two
+  dedicated test users.
 - **Supabase Agent Skills**, committed under `.agents/skills/`.
   `.claude/skills/` holds machine-local symlinks and is git-ignored, except
   `.claude/skills/supabase-security/SKILL.md`, which is committed.
@@ -93,9 +94,15 @@ destination, **not** the Sprint 3 scope (see "Scope").
   Vitest unit and integration tests.
 - Done: the Part 1 agents (`ai-architect`, `ai-code-reviewer`,
   `security-auditor`) and the `supabase-security` skill under `.claude/`.
-- `/workspace` is a Deal Desk landing placeholder. There is no Deal Desk UI,
-  no Deal Desk Server Action and no AI module yet.
-- Next: deployment to Vercel (Sprint 3 Part 2).
+- In progress: Deal Records. Slice 1 is built: `/workspace` lists the user's
+  deals, `/workspace/accounts/new` and `/workspace/deals/new` create records
+  through the Server Actions in `app/lib/actions/accounts.ts` and `deals.ts`,
+  and `/workspace/deals/[dealId]` shows a deal. Editing, deleting, account
+  management and renewal lineage are the next Deal Records slices. There is
+  no AI module yet.
+- Deployed on Vercel at https://ai-rev-deal-desk.vercel.app. Automatic Git
+  deployments are disabled (`vercel.json`); production is deployed manually
+  after review and the security scan.
 - The code still contains the NoteSpace product (notes, collections, tags,
   their components and actions). It is **reference material for patterns
   only**. It is not extended, and it does not appear in the Sprint 3 UI.
@@ -318,11 +325,13 @@ npx tsc --noEmit     # types
 npm run lint         # ESLint
 npm run build        # production build
 npm test             # Vitest unit and integration tests
+npm run test:e2e     # Playwright end-to-end tests
 ```
 
 `npm test` includes integration tests that sign in two dedicated test users on
 the hosted canonical database, so it needs `.env.test.local` and network
-access. Playwright is not installed yet; when it is, its tests join this list.
+access. `npm run test:e2e` signs the same users in through the app's login
+form; it starts its own dev server and needs the same files and access.
 
 Vendored third-party files under `.agents/skills/` are excluded: they are
 upstream content and are not edited to satisfy a local check.

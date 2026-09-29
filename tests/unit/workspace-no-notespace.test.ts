@@ -90,6 +90,7 @@ describe('/workspace does not depend on NoteSpace', () => {
   })
 
   it('identifies the product as the AI Revenue Deal Desk', () => {
-    expect(offenders(/AI Revenue Deal Desk/)).toContain('app/workspace/page.tsx')
+    // The layout renders the header every workspace page shows.
+    expect(offenders(/AI Revenue Deal Desk/)).toContain('app/workspace/layout.tsx')
   })
 })

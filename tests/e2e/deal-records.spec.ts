@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 import { requireTestEnv } from '../support/env'
-import { signInTestUser } from '../support/supabase-clients'
+import { signInTestUser, signOutTestUser } from '../support/supabase-clients'
 
 /**
  * Deal Records, slice 1: create and view deals.
@@ -13,13 +13,14 @@ import { signInTestUser } from '../support/supabase-clients'
  *
  * Everything runs against the hosted canonical database as the two dedicated
  * test users, signed in through the real login form. The names carry a
- * per-run id, and `afterAll` deletes this run's account as user A through the
- * publishable key and user A's own session (RLS applies), which removes its
- * deals too.
+ * per-run id, and `afterAll` deletes every E2E account as user A through the
+ * publishable key and user A's own session (RLS applies), which removes their
+ * deals too, then signs that session out.
  */
 
+const E2E_PREFIX = 'E2E '
 const RUN_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-const RUN_PREFIX = `E2E ${RUN_ID}`
+const RUN_PREFIX = `${E2E_PREFIX}${RUN_ID}`
 const ACCOUNT_NAME = `${RUN_PREFIX} Account`
 const DEAL_NAME = `${RUN_PREFIX} Deal`
 
@@ -47,11 +48,19 @@ test.describe.serial('deal records', () => {
 
   test.afterAll(async () => {
     const userA = await signInTestUser('A')
-    const { error } = await userA.client
-      .from('accounts')
-      .delete()
-      .like('name', `${RUN_PREFIX}%`)
-    if (error) throw new Error(`E2E cleanup failed (${error.code}).`)
+
+    try {
+      // Every E2E account, not only this run's: a run that crashed before its
+      // cleanup would otherwise leave rows behind. Only the dedicated test
+      // user's rows are visible here, and only the E2E-named ones match.
+      const { error } = await userA.client
+        .from('accounts')
+        .delete()
+        .like('name', `${E2E_PREFIX}%`)
+      if (error) throw new Error(`E2E cleanup failed (${error.code}).`)
+    } finally {
+      await signOutTestUser(userA)
+    }
   })
 
   test('user A creates an account and a deal, and finds it in the list', async ({
@@ -109,6 +118,12 @@ test.describe.serial('deal records', () => {
     await page.goto(dealUrl)
 
     await expect(page.getByRole('heading', { name: 'Deal not found' })).toBeVisible()
+    await expect(page.getByText(DEAL_NAME)).toHaveCount(0)
+    await expect(page.getByText(ACCOUNT_NAME)).toHaveCount(0)
+
+    // Nor does it appear in user B's own deal list.
+    await page.goto('/workspace')
+    await expect(page.getByRole('heading', { level: 1, name: 'Deals' })).toBeVisible()
     await expect(page.getByText(DEAL_NAME)).toHaveCount(0)
     await expect(page.getByText(ACCOUNT_NAME)).toHaveCount(0)
   })

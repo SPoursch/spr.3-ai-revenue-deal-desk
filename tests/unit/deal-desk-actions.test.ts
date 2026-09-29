@@ -52,13 +52,16 @@ function form(fields: Record<string, string>): FormData {
   return data
 }
 
-function dbError(table: 'accounts' | 'deals', code: string) {
+function dbError(table: 'accounts' | 'deals', code: string, message = RAW_DB_TEXT) {
   return new DealDeskDatabaseError(
     'insert',
     table,
-    new PostgrestError({ message: RAW_DB_TEXT, details: 'internal detail', hint: '', code }),
+    new PostgrestError({ message, details: 'internal detail', hint: '', code }),
   )
 }
+
+const ACCOUNT_FK_TEXT =
+  'insert or update on table "deals" violates foreign key constraint "deals_account_fkey"'
 
 const VALID_DEAL = {
   accountId: ACCOUNT_ID,
@@ -201,17 +204,39 @@ describe('createDealAction', () => {
     expect(cache.revalidatePath).toHaveBeenCalledWith('/workspace')
   })
 
-  it.each([
-    ['rejected input (e.g. an account that is not yours)', dbError('deals', '23503')],
-    ['an unexpected failure', new Error('connection reset')],
-  ])('shows a safe message for %s and logs it', async (_label, error) => {
-    db.createDeal.mockRejectedValue(error)
+  it('points at the account field when the account is missing or not yours', async () => {
+    db.createDeal.mockRejectedValue(dbError('deals', '23503', ACCOUNT_FK_TEXT))
+
+    const result = await createDealAction(initialDealDeskActionState, form(VALID_DEAL))
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/check the highlighted fields/i)
+    expect(result.fieldErrors.accountId).toMatch(/choose one of your accounts/i)
+    expect(result.values).toMatchObject({ name: 'Acme 2027' })
+    expect(JSON.stringify(result)).not.toContain('deals_account_fkey')
+    expect(JSON.stringify(result)).not.toContain('internal detail')
+    expect(consoleError).toHaveBeenCalled()
+  })
+
+  it('asks the user to check the details for other rejected input', async () => {
+    db.createDeal.mockRejectedValue(dbError('deals', '23514'))
+
+    const result = await createDealAction(initialDealDeskActionState, form(VALID_DEAL))
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/could not be saved with these details/i)
+    expect(result.fieldErrors).toEqual({})
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+    expect(consoleError).toHaveBeenCalled()
+  })
+
+  it('shows a generic message for an unexpected failure and logs it', async () => {
+    db.createDeal.mockRejectedValue(new Error('connection reset'))
 
     const result = await createDealAction(initialDealDeskActionState, form(VALID_DEAL))
 
     expect(result.ok).toBe(false)
     expect(result.message).toMatch(/could not create the deal/i)
-    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
     expect(JSON.stringify(result)).not.toContain('connection reset')
     expect(consoleError).toHaveBeenCalled()
   })

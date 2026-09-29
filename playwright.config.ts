@@ -10,17 +10,18 @@ import { defineConfig, devices } from '@playwright/test'
  * through the login form, with the publishable key, under row level security.
  * No service-role key and no stored session file are involved.
  *
- * Environment: `.env.local` (Supabase URL and publishable key) and
- * `.env.test.local` (the test users' credentials) are read with Node's own
- * parser, as in vitest.config.mts, and never printed. Values already in the
- * environment win.
+ * Environment: `.env.local` (Supabase URL and publishable key) is read with
+ * Node's own parser, as in vitest.config.mts, and never printed; values
+ * already in the environment win. The test users' credentials in
+ * `.env.test.local` are deliberately NOT loaded here: this process starts the
+ * dev server (`webServer`), which inherits its environment, and the app has
+ * no business holding test passwords. The tests read them on demand through
+ * tests/support/env.ts, inside the test workers only.
  *
  * Traces are off: a trace records typed values, including the test password.
  */
-for (const file of ['.env.local', '.env.test.local']) {
-  if (!existsSync(file)) continue
-
-  for (const [key, value] of Object.entries(parseEnv(readFileSync(file, 'utf8')))) {
+if (existsSync('.env.local')) {
+  for (const [key, value] of Object.entries(parseEnv(readFileSync('.env.local', 'utf8')))) {
     if (value !== undefined && process.env[key] === undefined) {
       process.env[key] = value
     }
