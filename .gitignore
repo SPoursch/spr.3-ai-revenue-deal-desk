@@ -63,3 +63,9 @@ next-env.d.ts
 # Supabase CLI machine-local state (linked project ref, CLI version cache).
 # Written by commands such as `supabase gen types`; never committed.
 /supabase/.temp/
+
+# Playwright output (screenshots of failed runs can show test data)
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
