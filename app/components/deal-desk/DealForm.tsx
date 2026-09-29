@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react'
 
-import { createDealAction } from '@/app/lib/actions/deals'
+import { createDealAction, updateDealAction } from '@/app/lib/actions/deals'
 import { initialDealDeskActionState } from '@/app/lib/actions/deal-desk-action-state'
 import { DEAL_STAGES, DEAL_TYPES } from '@/app/lib/deal-desk/domain'
 import { DEAL_STAGE_LABELS, DEAL_TYPE_LABELS } from '@/app/lib/deal-desk/format'
@@ -20,22 +20,42 @@ export type AccountOption = { id: string; name: string }
  */
 const OFFERED_DEAL_TYPES = DEAL_TYPES.filter((type) => type !== 'renewal')
 
+/** What the form needs to edit an existing deal instead of creating one. */
+export type DealEdit = {
+  dealId: string
+  accountName: string
+  /** Only a deal created as a renewal has a predecessor, and may stay one. */
+  hasPredecessor: boolean
+  /** The deal's current values, keyed by field name. */
+  initial: Record<string, string>
+}
+
 /**
- * Creates a deal on one of the user's accounts. Validation happens in the
- * Server Action; see AccountForm for why the form is keyed by the result.
+ * Creates a deal on one of the user's accounts, or edits an existing deal.
+ * Validation happens in the Server Action; see AccountForm for why the form
+ * is keyed by the result.
+ *
+ * When editing, the account is shown but cannot be changed: the database
+ * grants no UPDATE on a deal's account or predecessor.
  */
 export function DealForm({
-  accounts,
-  defaultAccountId,
+  accounts = [],
+  defaultAccountId = null,
+  edit,
 }: {
-  accounts: AccountOption[]
-  defaultAccountId: string | null
+  accounts?: AccountOption[]
+  defaultAccountId?: string | null
+  edit?: DealEdit
 }) {
   const [state, formAction, pending] = useActionState(
-    createDealAction,
+    edit ? updateDealAction : createDealAction,
     initialDealDeskActionState,
   )
-  const { fieldErrors, values } = state
+  const { fieldErrors } = state
+  // After a failed submission, what the user typed; otherwise the deal's
+  // current values when editing.
+  const values = state.at === 0 && edit ? edit.initial : state.values
+  const dealTypes = edit?.hasPredecessor ? DEAL_TYPES : OFFERED_DEAL_TYPES
 
   const text = (
     field: string,
@@ -64,26 +84,40 @@ export function DealForm({
         </p>
       ) : null}
 
-      <FormField id="accountId" label="Account" error={fieldErrors.accountId}>
-        {(props) => (
-          <select
-            {...props}
-            name="accountId"
-            required
-            defaultValue={values.accountId ?? defaultAccountId ?? ''}
-            className={FIELD_CLASS}
-          >
-            <option value="" disabled>
-              Choose an account
-            </option>
-            {accounts.map((account) => (
-              <option key={account.id} value={account.id}>
-                {account.name}
+      {edit ? <input type="hidden" name="dealId" value={edit.dealId} /> : null}
+
+      {edit ? (
+        <FormField
+          id="accountId"
+          label="Account"
+          hint="A deal stays with the account it was created on."
+        >
+          {(props) => (
+            <input {...props} readOnly value={edit.accountName} className={FIELD_CLASS} />
+          )}
+        </FormField>
+      ) : (
+        <FormField id="accountId" label="Account" error={fieldErrors.accountId}>
+          {(props) => (
+            <select
+              {...props}
+              name="accountId"
+              required
+              defaultValue={values.accountId ?? defaultAccountId ?? ''}
+              className={FIELD_CLASS}
+            >
+              <option value="" disabled>
+                Choose an account
               </option>
-            ))}
-          </select>
-        )}
-      </FormField>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </FormField>
+      )}
 
       <FormField id="name" label="Deal name" error={fieldErrors.name}>
         {(props) => (
@@ -111,7 +145,7 @@ export function DealForm({
               <option value="" disabled>
                 Choose a type
               </option>
-              {OFFERED_DEAL_TYPES.map((type) => (
+              {dealTypes.map((type) => (
                 <option key={type} value={type}>
                   {DEAL_TYPE_LABELS[type]}
                 </option>
@@ -176,7 +210,7 @@ export function DealForm({
 
       <div>
         <button type="submit" disabled={pending} className={SUBMIT_CLASS}>
-          {pending ? 'Creating…' : 'Create deal'}
+          {edit ? (pending ? 'Saving…' : 'Save changes') : pending ? 'Creating…' : 'Create deal'}
         </button>
       </div>
     </form>

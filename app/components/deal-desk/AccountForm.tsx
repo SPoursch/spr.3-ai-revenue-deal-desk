@@ -2,14 +2,14 @@
 
 import { useActionState } from 'react'
 
-import { createAccountAction } from '@/app/lib/actions/accounts'
+import { createAccountAction, updateAccountAction } from '@/app/lib/actions/accounts'
 import { initialDealDeskActionState } from '@/app/lib/actions/deal-desk-action-state'
 
 import { FormField } from './FormField'
 import { ERROR_CLASS, FIELD_CLASS, SUBMIT_CLASS } from './styles'
 
 /**
- * Creates an account. A Client Component only because `useActionState` is a
+ * Creates an account, or edits an existing one. A Client Component only because `useActionState` is a
  * hook; validation happens in the Server Action, and the browser's own
  * `required` and `maxLength` are a convenience, not the check.
  *
@@ -17,12 +17,20 @@ import { ERROR_CLASS, FIELD_CLASS, SUBMIT_CLASS } from './styles'
  * re-mounted with the submitted values, instead of React's post-action reset
  * clearing them.
  */
-export function AccountForm() {
+export function AccountForm({
+  edit,
+}: {
+  /** An existing account to edit: its id and current values. */
+  edit?: { accountId: string; initial: Record<string, string> }
+} = {}) {
   const [state, formAction, pending] = useActionState(
-    createAccountAction,
+    edit ? updateAccountAction : createAccountAction,
     initialDealDeskActionState,
   )
-  const { fieldErrors, values } = state
+  const { fieldErrors } = state
+  // After a failed submission, what the user typed; otherwise the account's
+  // current values when editing.
+  const values = state.at === 0 && edit ? edit.initial : state.values
 
   return (
     <form key={state.at} action={formAction} noValidate className="flex flex-col gap-5">
@@ -31,6 +39,8 @@ export function AccountForm() {
           {state.message}
         </p>
       ) : null}
+
+      {edit ? <input type="hidden" name="accountId" value={edit.accountId} /> : null}
 
       <FormField id="name" label="Account name" error={fieldErrors.name}>
         {(props) => (
@@ -106,7 +116,7 @@ export function AccountForm() {
 
       <div>
         <button type="submit" disabled={pending} className={SUBMIT_CLASS}>
-          {pending ? 'Creating…' : 'Create account'}
+          {edit ? (pending ? 'Saving…' : 'Save changes') : pending ? 'Creating…' : 'Create account'}
         </button>
       </div>
     </form>

@@ -2,7 +2,13 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
-import { CARD_CLASS, PAGE_CLASS, TEXT_LINK_CLASS } from '@/app/components/deal-desk/styles'
+import {
+  CARD_CLASS,
+  PAGE_CLASS,
+  PRIMARY_LINK_CLASS,
+  SECONDARY_LINK_CLASS,
+  TEXT_LINK_CLASS,
+} from '@/app/components/deal-desk/styles'
 import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
@@ -71,7 +77,17 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
       <Link href="/workspace" className={`${TEXT_LINK_CLASS} text-[14px]`}>
         ← All deals
       </Link>
-      <h1 className="mt-4 text-[28px] font-bold tracking-tight">{deal.name}</h1>
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-4">
+        <h1 className="text-[28px] font-bold tracking-tight">{deal.name}</h1>
+        <div className="flex gap-3">
+          <Link href={`/workspace/deals/${deal.id}/edit`} className={PRIMARY_LINK_CLASS}>
+            Edit deal
+          </Link>
+          <Link href={`/workspace/deals/${deal.id}/delete`} className={SECONDARY_LINK_CLASS}>
+            Delete deal
+          </Link>
+        </div>
+      </div>
 
       <section aria-label="Deal details" className={`${CARD_CLASS} mt-8`}>
         <dl className="grid gap-x-6 sm:grid-cols-2">
