@@ -11,13 +11,15 @@ import { describe, expect, it } from 'vitest'
  *
  * The test reads the route's source rather than rendering it, so it needs no
  * browser and no database. It covers every file under app/workspace/, the
- * layout included, and fails if any of them reaches NoteSpace data access or
- * a NoteSpace component, or names the old product.
+ * layout included, and the Deal Desk components those routes render
+ * (app/components/deal-desk/), and fails if any of them reaches NoteSpace data
+ * access or a NoteSpace component, or names the old product.
  */
 
 // Vitest runs from the repository root.
 const ROOT = process.cwd()
 const WORKSPACE = join(ROOT, 'app', 'workspace')
+const DEAL_DESK_COMPONENTS = join(ROOT, 'app', 'components', 'deal-desk')
 
 /** The NoteSpace data-access functions, as exported from app/lib/db. */
 const NOTESPACE_DATA_ACCESS = [
@@ -53,7 +55,7 @@ function sourceFiles(dir: string): string[] {
   })
 }
 
-const files = sourceFiles(WORKSPACE).map((path) => ({
+const files = [WORKSPACE, DEAL_DESK_COMPONENTS].flatMap(sourceFiles).map((path) => ({
   path: relative(ROOT, path).split(sep).join('/'),
   source: readFileSync(path, 'utf8'),
 }))
