@@ -42,3 +42,16 @@ export function failure(
 ): DealDeskActionState {
   return { ok: false, message, fieldErrors, values, at: Date.now() }
 }
+
+/**
+ * What a form shows: the values the user submitted, when the result carries
+ * them (a failed submission), otherwise the record's current values when
+ * editing. A result without values, such as "You need to be signed in",
+ * therefore leaves an edit form showing the record rather than empty.
+ */
+export function formValues(
+  state: DealDeskActionState,
+  initial: Record<string, string> = {},
+): Record<string, string> {
+  return Object.keys(state.values).length > 0 ? state.values : initial
+}

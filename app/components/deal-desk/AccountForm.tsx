@@ -3,7 +3,10 @@
 import { useActionState } from 'react'
 
 import { createAccountAction, updateAccountAction } from '@/app/lib/actions/accounts'
-import { initialDealDeskActionState } from '@/app/lib/actions/deal-desk-action-state'
+import {
+  formValues,
+  initialDealDeskActionState,
+} from '@/app/lib/actions/deal-desk-action-state'
 
 import { FormField } from './FormField'
 import { ERROR_CLASS, FIELD_CLASS, SUBMIT_CLASS } from './styles'
@@ -28,9 +31,9 @@ export function AccountForm({
     initialDealDeskActionState,
   )
   const { fieldErrors } = state
-  // After a failed submission, what the user typed; otherwise the account's
-  // current values when editing.
-  const values = state.at === 0 && edit ? edit.initial : state.values
+  // What the user typed after a failed submission; otherwise, when editing,
+  // the account's current values (also after a result with no values).
+  const values = formValues(state, edit?.initial)
 
   return (
     <form key={state.at} action={formAction} noValidate className="flex flex-col gap-5">

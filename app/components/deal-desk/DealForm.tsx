@@ -3,7 +3,10 @@
 import { useActionState } from 'react'
 
 import { createDealAction, updateDealAction } from '@/app/lib/actions/deals'
-import { initialDealDeskActionState } from '@/app/lib/actions/deal-desk-action-state'
+import {
+  formValues,
+  initialDealDeskActionState,
+} from '@/app/lib/actions/deal-desk-action-state'
 import { DEAL_STAGES, DEAL_TYPES } from '@/app/lib/deal-desk/domain'
 import { DEAL_STAGE_LABELS, DEAL_TYPE_LABELS } from '@/app/lib/deal-desk/format'
 
@@ -52,9 +55,9 @@ export function DealForm({
     initialDealDeskActionState,
   )
   const { fieldErrors } = state
-  // After a failed submission, what the user typed; otherwise the deal's
-  // current values when editing.
-  const values = state.at === 0 && edit ? edit.initial : state.values
+  // What the user typed after a failed submission; otherwise, when editing,
+  // the deal's current values (also after a result with no values).
+  const values = formValues(state, edit?.initial)
   const dealTypes = edit?.hasPredecessor ? DEAL_TYPES : OFFERED_DEAL_TYPES
 
   const text = (
