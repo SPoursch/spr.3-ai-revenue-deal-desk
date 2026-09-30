@@ -559,6 +559,9 @@ function readProvisionValue(
       read.errorFor('valueUnit', 'Choose the unit of the number.')
     } else if (valueUnit !== null && !allowed.includes(valueUnit)) {
       read.errorFor('valueUnit', 'Choose a unit that fits this type of provision.')
+    } else if (type === 'discount' && valueNumeric !== null && valueNumeric > 100) {
+      // A discount is a percentage (the number is never negative).
+      read.errorFor('valueNumeric', 'Enter a discount between 0 and 100 percent.')
     }
   }
 

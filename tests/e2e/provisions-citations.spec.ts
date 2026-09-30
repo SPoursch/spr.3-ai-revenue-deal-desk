@@ -567,7 +567,18 @@ test.describe.serial('provisions and citations', () => {
     )
     await submit(page, page.getByRole('button', { name: 'Add provision' }))
 
-    // Whatever the outcome, no provision of deal A cites deal A2's excerpt.
+    // The tampered submission reached the server and was refused.
+    await expect(page.getByRole('main').getByRole('alert')).toContainText(
+      /check the highlighted fields/i,
+    )
+    await expect(page.getByRole('main')).toContainText("Choose excerpts of this deal's evidence.")
+    await expect(page).toHaveURL(new RegExp(`/workspace/deals/${dealId}/provisions/new$`))
+
+    // Nothing was created: no termination provision on deal A...
+    expect(
+      (await provisionsOf(userA, dealId)).filter((p) => p.provision_type === 'termination'),
+    ).toEqual([])
+    // ...and no provision anywhere cites deal A2's excerpt.
     const { data, error } = await userA.client
       .from('provision_excerpts')
       .select('provision_id')
@@ -636,6 +647,46 @@ test.describe.serial('provisions and citations', () => {
     expect(await citationsOf(userB, liabilityId)).toEqual([])
   })
 
+  test("user B cannot edit user A's provision by submitting its id", async ({ page }) => {
+    expect(liabilityId, 'a provision must have been added').not.toBe('')
+    const aBefore = await readProvision(userA, liabilityId)
+
+    // B's own provision, whose edit form B tampers with.
+    const own = await userB.client
+      .from('provisions')
+      .insert({
+        deal_id: fixtures.dealB.dealId,
+        provision_type: 'governing_law',
+        value_text: 'B law',
+        source: 'human_entered',
+      })
+      .select('id')
+      .single()
+    if (own.error) throw new Error(`E2E setup: provision insert failed (${own.error.code}).`)
+    await signIn(page, 'B')
+
+    await page.goto(`/workspace/deals/${fixtures.dealB.dealId}/provisions/${own.data.id}/edit`)
+    await page.getByLabel('Value', { exact: true }).fill('Overwritten by B')
+    // Point the form's provision id at user A's provision.
+    await waitForHydration(page)
+    await page.locator('main form').first().evaluate(
+      (form, { from, to }) => {
+        for (const input of Array.from(form.querySelectorAll('input'))) {
+          if (input.value === from) input.value = to
+        }
+      },
+      { from: own.data.id, to: liabilityId },
+    )
+    await submit(page, page.getByRole('button', { name: 'Save changes' }))
+
+    await expect(page.getByRole('main').getByRole('alert')).toContainText(
+      /no longer exists, or it is not one of yours/i,
+    )
+    // A's provision is exactly as it was, and B's own was not touched either.
+    expect(await readProvision(userA, liabilityId)).toEqual(aBefore)
+    expect(await readProvision(userB, own.data.id)).toMatchObject({ value_text: 'B law' })
+  })
+
   test("user B cannot redirect a submission onto user A's deal", async ({ page }) => {
     const before = await provisionsOf(userA, fixtures.dealA.dealId)
     await signIn(page, 'B')
@@ -656,7 +707,15 @@ test.describe.serial('provisions and citations', () => {
     await smuggle(page, { deal_id: fixtures.dealA.dealId, dealId: fixtures.dealA.dealId })
     await submit(page, page.getByRole('button', { name: 'Add provision' }))
 
-    // Whatever B sees, nothing reached A's deal.
+    // The redirected submission reached the server and was refused as not B's.
+    await expect(page.getByRole('main').getByRole('alert')).toContainText(
+      /no longer exists, or it is not one of yours/i,
+    )
+
+    // Nothing reached A's deal, and nothing was created on B's own deal either.
     expect(await provisionsOf(userA, fixtures.dealA.dealId)).toEqual(before)
+    expect(
+      (await provisionsOf(userB, fixtures.dealB.dealId)).filter((p) => p.provision_type === 'discount'),
+    ).toEqual([])
   })
 })

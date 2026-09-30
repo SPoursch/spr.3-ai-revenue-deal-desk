@@ -51,9 +51,8 @@ const INPUT_REJECTED_MESSAGE =
 const CREATE_FAILED_MESSAGE = 'Could not add the provision. Please try again.'
 const UPDATE_FAILED_MESSAGE = 'Could not save the provision. Please try again.'
 const DELETE_FAILED_MESSAGE = 'Could not delete the provision. Please try again.'
-const CITATIONS_FAILED_MESSAGE =
-  'The provision was saved, but its citations could not be added. It is shown as ' +
-  'unsupported; add them from its page.'
+/** Set on the provision page's URL when its citations failed on creation. */
+const CITATIONS_FAILED_PARAM = 'citations'
 const ALREADY_CITED_MESSAGE = 'One of these excerpts is already cited. Refresh the page and try again.'
 const CITE_FAILED_MESSAGE = 'Could not add the citations. Please try again.'
 const REMOVE_FAILED_MESSAGE = 'Could not remove the citation. Please try again.'
@@ -111,7 +110,8 @@ function provisionPath(provision: Pick<Provision, 'id' | 'deal_id'>): string {
  *
  * The provision and its citations are two inserts. If the citations fail
  * after the provision was stored, the provision stays, shown as unsupported,
- * and the action says so rather than claiming success.
+ * and its page opens with a notice that the citations were not added, rather
+ * than claiming success.
  */
 export async function createProvisionAction(
   _state: DealDeskActionState,
@@ -174,7 +174,7 @@ export async function createProvisionAction(
     return failure(CREATE_FAILED_MESSAGE, {}, values)
   }
 
-  const dealPath = `${WORKSPACE_PATH}/deals/${provision.deal_id}`
+  let citationsFailed = false
 
   try {
     await addProvisionExcerpts(
@@ -190,16 +190,19 @@ export async function createProvisionAction(
       ...safeErrorMetadata(error),
     })
 
-    // The provision exists; the form is not re-filled, so it is not added twice.
-    revalidatePath(dealPath)
-
-    return failure(CITATIONS_FAILED_MESSAGE)
+    // The provision exists, so open it rather than the form (a retry would
+    // hit the one-per-type rule). Its page says the citations failed.
+    citationsFailed = true
   }
 
-  revalidatePath(dealPath)
+  revalidatePath(`${WORKSPACE_PATH}/deals/${provision.deal_id}`)
 
   // Outside the try blocks: redirect() works by throwing.
-  redirect(provisionPath(provision))
+  redirect(
+    citationsFailed
+      ? `${provisionPath(provision)}?${CITATIONS_FAILED_PARAM}=failed`
+      : provisionPath(provision),
+  )
 }
 
 /**

@@ -89,6 +89,23 @@ describe('parseProvisionForm', () => {
     )
   })
 
+  it('allows a discount from 0 to 100 percent only', () => {
+    const at = (valueNumeric: string) =>
+      parseProvisionForm(
+        form({ provisionType: 'discount', valueText: 'Discount', valueNumeric, valueUnit: 'percent' }),
+      )
+
+    expect(at('0').ok).toBe(true)
+    expect(at('100').ok).toBe(true)
+    expect(errors(at('100.01'))).toHaveProperty('valueNumeric')
+
+    const onEdit = parseProvisionValueForm(
+      form({ valueText: 'Discount', valueNumeric: '150', valueUnit: 'percent' }),
+      'discount',
+    )
+    expect(!onEdit.ok && onEdit.fieldErrors).toHaveProperty('valueNumeric')
+  })
+
   it('caps the value at 500 characters and requires one', () => {
     const at = (valueText: string) =>
       parseProvisionForm(form({ provisionType: 'governing_law', valueText }))

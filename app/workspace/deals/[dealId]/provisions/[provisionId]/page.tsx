@@ -5,6 +5,7 @@ import { notFound, redirect } from 'next/navigation'
 import { AddCitationsForm, RemoveCitationForm } from '@/app/components/deal-desk/CitationForms'
 import {
   CARD_CLASS,
+  ERROR_CLASS,
   PAGE_CLASS,
   PRIMARY_LINK_CLASS,
   SECONDARY_LINK_CLASS,
@@ -27,6 +28,10 @@ import {
  * "Supported" is worked out from the citations each time, never stored: a
  * provision with none is shown as unsupported, not as an established fact.
  * Excerpt text is untrusted evidence and is rendered as text only.
+ *
+ * `?citations=failed` is set when creating the provision stored it but not
+ * its citations; the page then says so. It only changes the notice shown:
+ * support is still worked out from the stored citations.
  */
 export const dynamic = 'force-dynamic'
 
@@ -34,12 +39,14 @@ export const metadata: Metadata = { title: 'Provision · AI Revenue Deal Desk' }
 
 export default async function ProvisionPage({
   params,
+  searchParams,
 }: PageProps<'/workspace/deals/[dealId]/provisions/[provisionId]'>) {
   if (!(await getAuthenticatedUser())) {
     redirect('/login')
   }
 
   const { dealId, provisionId } = await params
+  const { citations: citationsParam } = await searchParams
 
   if (!isUuid(dealId) || !isUuid(provisionId)) {
     notFound()
@@ -113,6 +120,11 @@ export default async function ProvisionPage({
 
       <section aria-label="Citations" className="mt-8">
         <h2 className="text-[20px] font-bold tracking-tight">Citations</h2>
+        {citationsParam === 'failed' && citations.length === 0 ? (
+          <p role="status" className={`${ERROR_CLASS} mt-3`}>
+            The provision was saved, but its citations could not be added. Add them below.
+          </p>
+        ) : null}
         {citations.length === 0 ? (
           <p className="mt-3 text-[15px] text-muted">
             No excerpt supports this provision yet.
