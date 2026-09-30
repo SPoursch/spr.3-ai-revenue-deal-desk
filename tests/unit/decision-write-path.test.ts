@@ -21,8 +21,16 @@ import { describe, expect, it } from 'vitest'
 const ROOT = process.cwd()
 const APP = join(ROOT, 'app')
 
-/** The files allowed to reach the Decision write path. */
-const ALLOWED_CALLERS = ['app/lib/db/decisions.ts', 'app/lib/db/index.ts']
+/**
+ * The files allowed to reach the Decision write path: the data layer, and the
+ * Server Action behind the human decision form (Rules → Exceptions →
+ * Decisions V1). The rule registry is deliberately not here.
+ */
+const ALLOWED_CALLERS = [
+  'app/lib/actions/exceptions.ts',
+  'app/lib/db/decisions.ts',
+  'app/lib/db/index.ts',
+]
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
