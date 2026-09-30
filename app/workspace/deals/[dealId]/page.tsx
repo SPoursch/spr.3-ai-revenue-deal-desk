@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
+import { CheckDealForm } from '@/app/components/deal-desk/ExceptionForms'
+
 import {
   CARD_CLASS,
   PAGE_CLASS,
@@ -13,6 +15,8 @@ import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
   EVIDENCE_TYPE_LABELS,
+  EXCEPTION_SEVERITY_LABELS,
+  EXCEPTION_STATUS_LABELS,
   PROVISION_TYPE_LABELS,
   formatBoolean,
   formatDate,
@@ -26,6 +30,7 @@ import {
   getDeal,
   listDeals,
   listEvidenceItems,
+  listExceptions,
   listProvisionExcerpts,
   listProvisions,
 } from '@/app/lib/db'
@@ -43,6 +48,11 @@ import {
  * key keeps a renewal on its owner's deals.
  */
 export const dynamic = 'force-dynamic'
+
+/** Decided and dismissed exceptions are closed; open and under review are live. */
+function isClosed(status: string): boolean {
+  return status === 'decided' || status === 'dismissed'
+}
 
 export const metadata: Metadata = { title: 'Deal · AI Revenue Deal Desk' }
 
@@ -70,7 +80,7 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
 
   // A failed read goes to the workspace error page, so an evidence list that
   // could not be loaded never looks like "No evidence yet".
-  const [account, predecessor, renewals, evidence, provisions] = await Promise.all([
+  const [account, predecessor, renewals, evidence, provisions, exceptions] = await Promise.all([
     getAccount(deal.account_id),
     deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
     listDeals().then((deals) => deals.filter((d) => d.predecessor_deal_id === deal.id)),
@@ -82,6 +92,12 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
           provision,
           citationCount: (await listProvisionExcerpts(provision.id)).length,
         })),
+      ),
+    ),
+    // Live exceptions first, each group newest first (the list's own order).
+    listExceptions(deal.id).then((list) =>
+      [...list].sort(
+        (a, b) => Number(isClosed(a.status)) - Number(isClosed(b.status)),
       ),
     ),
   ])
@@ -189,6 +205,38 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
                 <span className="text-[15px]">{provision.value_text}</span>
                 <span className="text-[14px] text-muted">
                   {citationCount > 0 ? 'Supported' : 'Unsupported'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-label="Exceptions" className="mt-8">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <h2 className="text-[20px] font-bold tracking-tight">Exceptions</h2>
+          <CheckDealForm dealId={deal.id} />
+        </div>
+        {exceptions.length === 0 ? (
+          <p className="mt-3 text-[15px] text-muted">
+            No exceptions. Check the deal to run its rules.
+          </p>
+        ) : (
+          <ul className={`${CARD_CLASS} mt-3 divide-y divide-border`}>
+            {exceptions.map((exception) => (
+              <li
+                key={exception.id}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-6 py-4"
+              >
+                <Link
+                  href={`/workspace/deals/${deal.id}/exceptions/${exception.id}`}
+                  className={`${TEXT_LINK_CLASS} text-[15px]`}
+                >
+                  {exception.title}
+                </Link>
+                <span className="text-[14px] text-muted">
+                  {EXCEPTION_SEVERITY_LABELS[exception.severity]} ·{' '}
+                  {EXCEPTION_STATUS_LABELS[exception.status]}
                 </span>
               </li>
             ))}

@@ -1,7 +1,10 @@
 import type {
   DealStage,
   DealType,
+  DecisionType,
   EvidenceType,
+  ExceptionSeverity,
+  ExceptionStatus,
   ProvisionType,
   ProvisionValueUnit,
 } from './domain'
@@ -60,6 +63,28 @@ export const PROVISION_UNIT_LABELS: Record<ProvisionValueUnit, string> = {
   days: 'Days',
   percent: 'Percent',
   region: 'Region',
+}
+
+export const EXCEPTION_SEVERITY_LABELS: Record<ExceptionSeverity, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+}
+
+export const EXCEPTION_STATUS_LABELS: Record<ExceptionStatus, string> = {
+  open: 'Open',
+  under_review: 'Under review',
+  decided: 'Decided',
+  dismissed: 'Dismissed',
+}
+
+export const DECISION_TYPE_LABELS: Record<DecisionType, string> = {
+  approve: 'Approve',
+  reject: 'Reject',
+  approve_with_conditions: 'Approve with conditions',
+  accept_risk: 'Accept risk',
+  request_change: 'Request change',
+  dismiss_false_positive: 'Dismiss as false positive',
 }
 
 const EUR = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' })
