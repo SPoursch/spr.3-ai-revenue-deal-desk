@@ -178,7 +178,14 @@ test.describe.serial('renewal lineage', () => {
     await expect(page.getByRole('heading', { level: 1, name: RENEWAL_NAME })).toBeVisible()
     const details = page.getByRole('region', { name: 'Deal details' })
     await expect(details).toContainText(ACCOUNT_NAME)
-    await expect(details).toContainText('Renewal')
+    // The Deal type value itself: "Renewal" also appears in the "Renewal
+    // date" label and in the renewal's name.
+    await expect(
+      details
+        .locator('div')
+        .filter({ has: page.locator('dt', { hasText: /^Deal type$/ }) })
+        .locator('dd'),
+    ).toHaveText('Renewal')
     await expect(details).toContainText('Discovery')
     await expect(details).toContainText('€66,000.00')
 
@@ -231,7 +238,8 @@ test.describe.serial('renewal lineage', () => {
     const deals = page.getByRole('region', { name: 'Deals' })
     const renewalRow = deals.getByRole('row', { name: new RegExp(RENEWAL_NAME) })
     await expect(renewalRow).toContainText(ACCOUNT_NAME)
-    await expect(renewalRow).toContainText('Renewal')
+    // The Type cell (the third column) exactly: the name contains "Renewal" too.
+    await expect(renewalRow.getByRole('cell').nth(2)).toHaveText('Renewal')
     await expect(renewalRow).toContainText('€66,000.00')
 
     const predecessorRow = deals.getByRole('row', { name: new RegExp(PREDECESSOR_NAME) })

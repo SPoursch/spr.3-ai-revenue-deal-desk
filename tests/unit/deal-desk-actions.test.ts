@@ -234,6 +234,21 @@ describe('createDealAction', () => {
     expect(cache.revalidatePath).toHaveBeenCalledWith('/workspace')
   })
 
+  it('refuses to create a renewal, which only the renewal flow may do', async () => {
+    const result = await createDealAction(
+      initialDealDeskActionState,
+      form({
+        ...VALID_DEAL,
+        dealType: 'renewal',
+        predecessorDealId: '22222222-2222-4222-8222-222222222222',
+      }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.fieldErrors.dealType).toMatch(/from the deal it renews/i)
+    expect(db.createDeal).not.toHaveBeenCalled()
+  })
+
   it('points at the account field when the account is missing or not yours', async () => {
     db.createDeal.mockRejectedValue(dbError('deals', '23503', ACCOUNT_FK_TEXT))
 

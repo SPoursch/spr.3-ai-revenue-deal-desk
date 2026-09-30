@@ -3,10 +3,9 @@ import {
   isDealType,
   type Account,
   type CreateAccountInput,
-  type CreateDealInput,
+  type CreateNonRenewalDealInput,
   type CreateRenewalDealInput,
   type Deal,
-  type DealId,
   type DealStage,
   type DealType,
   type UpdateDealInput,
@@ -147,12 +146,6 @@ class FieldReader {
     if (value !== null && value.length > MAX_TEXT_LENGTH) {
       return this.fail(field, `Keep this to ${MAX_TEXT_LENGTH} characters or fewer.`)
     }
-    return value
-  }
-
-  optionalUuid(field: string, message: string): string | null {
-    const value = readText(this.formData, field)
-    if (value !== null && !UUID_PATTERN.test(value)) return this.fail(field, message)
     return value
   }
 
@@ -302,8 +295,15 @@ function readDealTerms(
   }
 }
 
-/** Parses the deal form into `CreateDealInput`. */
-export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
+/**
+ * Parses the deal form into a `CreateNonRenewalDealInput`.
+ *
+ * A renewal is created only from the deal it renews (`parseRenewalForm` and
+ * `createRenewalAction`), which keeps it on its predecessor's account (U13).
+ * So this form refuses the `renewal` type and never reads a predecessor:
+ * nothing submitted here can create renewal lineage.
+ */
+export function parseDealForm(formData: FormData): FormResult<CreateNonRenewalDealInput> {
   const read = new FieldReader(formData)
 
   const accountId = readText(formData, 'accountId')
@@ -311,35 +311,27 @@ export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
     read.errorFor('accountId', 'Choose the account this deal belongs to.')
   }
 
-  const predecessorDealId = read.optionalUuid(
-    'predecessorDealId',
-    'Choose the deal this one follows from the list.',
-  )
   const terms = readDealTerms(read, formData)
 
-  // A renewal is a new deal linked to its predecessor (U13). Read from the
-  // submission, so this is reported even when other fields are invalid.
-  if (
-    formData.get('dealType') === 'renewal' &&
-    predecessorDealId === null &&
-    !read.errors.predecessorDealId
-  ) {
-    read.errorFor('predecessorDealId', 'Choose the deal this renewal follows.')
+  // Read from the submission, so this is reported even when other fields
+  // are invalid.
+  if (formData.get('dealType') === 'renewal') {
+    read.errorFor('dealType', 'Create a renewal from the deal it renews.')
   }
 
-  if (Object.keys(read.errors).length > 0 || accountId === null || terms === null) {
+  if (
+    Object.keys(read.errors).length > 0 ||
+    accountId === null ||
+    terms === null ||
+    terms.deal_type === 'renewal'
+  ) {
     return { ok: false, fieldErrors: read.errors }
   }
 
-  const { deal_type: dealType, ...rest } = terms
-  const base = { ...rest, account_id: accountId }
-
-  const value: CreateDealInput =
-    dealType === 'renewal'
-      ? { ...base, deal_type: 'renewal', predecessor_deal_id: predecessorDealId as DealId }
-      : { ...base, deal_type: dealType, predecessor_deal_id: predecessorDealId }
-
-  return { ok: true, value }
+  return {
+    ok: true,
+    value: { ...terms, account_id: accountId, deal_type: terms.deal_type, predecessor_deal_id: null },
+  }
 }
 
 /**

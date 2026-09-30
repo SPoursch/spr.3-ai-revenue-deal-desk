@@ -222,34 +222,34 @@ describe('parseDealForm', () => {
     )
   })
 
-  it('requires a predecessor for a renewal', () => {
-    expect(dealErrors({ ...VALID_DEAL, dealType: 'renewal' })).toHaveProperty(
-      'predecessorDealId',
-    )
+  it('refuses the renewal type: a renewal is created from the deal it renews', () => {
+    const errors = dealErrors({
+      ...VALID_DEAL,
+      dealType: 'renewal',
+      predecessorDealId: PREDECESSOR_ID,
+    })
+
+    expect(errors.dealType).toMatch(/from the deal it renews/i)
   })
 
-  it('reports a missing predecessor together with other invalid fields', () => {
+  it('reports a refused renewal together with other invalid fields', () => {
     const errors = dealErrors({ ...VALID_DEAL, dealType: 'renewal', arrEur: '-1' })
 
-    expect(errors).toHaveProperty('predecessorDealId')
+    expect(errors).toHaveProperty('dealType')
     expect(errors).toHaveProperty('arrEur')
   })
 
-  it('accepts a renewal that names its predecessor', () => {
-    const result = parseDealForm(
-      form({ ...VALID_DEAL, dealType: 'renewal', predecessorDealId: PREDECESSOR_ID }),
-    )
+  it('never reads a predecessor, so it cannot create renewal lineage', () => {
+    for (const predecessorDealId of [PREDECESSOR_ID, 'deal-1']) {
+      const result = parseDealForm(
+        form({ ...VALID_DEAL, dealType: 'expansion', predecessorDealId }),
+      )
 
-    expect(result.ok && result.value).toMatchObject({
-      deal_type: 'renewal',
-      predecessor_deal_id: PREDECESSOR_ID,
-    })
-  })
-
-  it('rejects a predecessor that is not a uuid', () => {
-    expect(
-      dealErrors({ ...VALID_DEAL, predecessorDealId: 'deal-1' }),
-    ).toHaveProperty('predecessorDealId')
+      expect(result.ok && result.value).toMatchObject({
+        deal_type: 'expansion',
+        predecessor_deal_id: null,
+      })
+    }
   })
 
   it('ignores fields it does not know, including user_id', () => {
