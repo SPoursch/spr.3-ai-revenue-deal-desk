@@ -1,4 +1,4 @@
-import type { DealStage, DealType } from './domain'
+import type { DealStage, DealType, EvidenceType } from './domain'
 
 /**
  * Display helpers for Deal Records.
@@ -23,6 +23,18 @@ export const DEAL_STAGE_LABELS: Record<DealStage, string> = {
   negotiation: 'Negotiation',
   contracting: 'Contracting',
   closed: 'Closed',
+}
+
+export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
+  msa: 'Master agreement (MSA)',
+  order_form: 'Order form',
+  amendment: 'Amendment',
+  dpa: 'Data processing agreement (DPA)',
+  email: 'Email',
+  call_note: 'Call note',
+  pricing_record: 'Pricing record',
+  security_questionnaire: 'Security questionnaire',
+  other: 'Other',
 }
 
 const EUR = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' })

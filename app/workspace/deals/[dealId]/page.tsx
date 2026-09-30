@@ -12,13 +12,20 @@ import {
 import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
+  EVIDENCE_TYPE_LABELS,
   formatBoolean,
   formatDate,
   formatEur,
   formatNumber,
   formatPercent,
 } from '@/app/lib/deal-desk/format'
-import { getAccount, getAuthenticatedUser, getDeal, listDeals } from '@/app/lib/db'
+import {
+  getAccount,
+  getAuthenticatedUser,
+  getDeal,
+  listDeals,
+  listEvidenceItems,
+} from '@/app/lib/db'
 
 /**
  * One deal, read-only.
@@ -58,10 +65,13 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
     notFound()
   }
 
-  const [account, predecessor, renewals] = await Promise.all([
+  // A failed read goes to the workspace error page, so an evidence list that
+  // could not be loaded never looks like "No evidence yet".
+  const [account, predecessor, renewals, evidence] = await Promise.all([
     getAccount(deal.account_id),
     deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
     listDeals().then((deals) => deals.filter((d) => d.predecessor_deal_id === deal.id)),
+    listEvidenceItems(deal.id),
   ])
 
   const details: [string, string][] = [
@@ -135,6 +145,42 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
           </ul>
         </section>
       ) : null}
+
+      <section aria-label="Evidence" className="mt-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-[20px] font-bold tracking-tight">Evidence</h2>
+          <Link
+            href={`/workspace/deals/${deal.id}/evidence/new`}
+            className={SECONDARY_LINK_CLASS}
+          >
+            Add evidence
+          </Link>
+        </div>
+        {evidence.length === 0 ? (
+          <p className="mt-3 text-[15px] text-muted">
+            No evidence yet. Add the contract, order form, emails or call notes behind
+            this deal.
+          </p>
+        ) : (
+          <ul className={`${CARD_CLASS} mt-3 divide-y divide-border`}>
+            {evidence.map((item) => (
+              <li key={item.id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-6 py-4">
+                <Link
+                  href={`/workspace/deals/${deal.id}/evidence/${item.id}`}
+                  className={`${TEXT_LINK_CLASS} text-[15px]`}
+                >
+                  {item.title}
+                </Link>
+                <span className="text-[14px] text-muted">
+                  {EVIDENCE_TYPE_LABELS[item.evidence_type]}
+                  {item.document_date ? ` · ${formatDate(item.document_date)}` : ''}
+                  {item.is_executed ? ' · Executed' : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </main>
   )
 }
