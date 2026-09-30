@@ -5,6 +5,7 @@ import {
   isEvidenceType,
   type CreateEvidenceExcerptInput,
   type CreateEvidenceItemInput,
+  type DealExcerptGroup,
   type DealId,
   type EvidenceExcerpt,
   type EvidenceExcerptId,
@@ -261,4 +262,41 @@ export async function createEvidenceExcerpts(
   }
 
   return data
+}
+
+/**
+ * An item's id, title and type with its excerpts, for the excerpt picker.
+ * Never `body_text`: the picker shows excerpts, not whole documents.
+ */
+const DEAL_EXCERPT_GROUP_COLUMNS =
+  'id, title, evidence_type, excerpts:evidence_excerpts!evidence_excerpts_evidence_item_fkey(id, ordinal, content)'
+
+/**
+ * Lists every excerpt of one deal grouped under its evidence item: items in
+ * the order they were added (as `listEvidenceItems`), excerpts by ordinal. An
+ * item without excerpts has an empty list; a deal that does not exist or is
+ * not the caller's yields an empty list.
+ */
+export async function listDealExcerptsByItem(dealId: DealId): Promise<DealExcerptGroup[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(EVIDENCE_ITEMS_TABLE)
+    .select(DEAL_EXCERPT_GROUP_COLUMNS)
+    .eq('deal_id', dealId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .order('ordinal', { ascending: true, referencedTable: 'excerpts' })
+
+  if (error) {
+    throw new DealDeskDatabaseError('select', EVIDENCE_ITEMS_TABLE, error)
+  }
+
+  return data.map(({ id, title, evidence_type, excerpts }) => {
+    if (!isEvidenceType(evidence_type)) {
+      throw new Error(
+        `Evidence item ${id} has an evidence_type unknown to the domain vocabulary ` +
+          `(${evidence_type}); update app/lib/deal-desk/domain.ts.`,
+      )
+    }
+    return { id, title, evidence_type, excerpts }
+  })
 }

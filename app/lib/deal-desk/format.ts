@@ -1,4 +1,10 @@
-import type { DealStage, DealType, EvidenceType } from './domain'
+import type {
+  DealStage,
+  DealType,
+  EvidenceType,
+  ProvisionType,
+  ProvisionValueUnit,
+} from './domain'
 
 /**
  * Display helpers for Deal Records.
@@ -37,6 +43,25 @@ export const EVIDENCE_TYPE_LABELS: Record<EvidenceType, string> = {
   other: 'Other',
 }
 
+export const PROVISION_TYPE_LABELS: Record<ProvisionType, string> = {
+  liability_cap: 'Liability cap',
+  data_residency: 'Data residency',
+  payment_terms: 'Payment terms',
+  auto_renewal: 'Auto-renewal',
+  termination: 'Termination',
+  discount: 'Discount',
+  governing_law: 'Governing law',
+}
+
+/** How the provision form names each unit a number may use. */
+export const PROVISION_UNIT_LABELS: Record<ProvisionValueUnit, string> = {
+  months_of_fees: 'Months of fees',
+  eur: 'EUR',
+  days: 'Days',
+  percent: 'Percent',
+  region: 'Region',
+}
+
 const EUR = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' })
 const DATE = new Intl.DateTimeFormat('en-GB', {
   day: 'numeric',
@@ -65,6 +90,26 @@ export function formatPercent(value: number | null): string {
 export function formatNumber(value: number | null, unit: string): string {
   if (value === null) return NOT_SET
   return `${DECIMAL.format(value)} ${value === 1 ? unit : `${unit}s`}`
+}
+
+/** A provision's number with its unit: "12 months of fees", "€50,000.00", "45 days", "10%". */
+export function formatProvisionAmount(
+  value: number | null,
+  unit: ProvisionValueUnit | null,
+): string {
+  if (value === null || unit === null) return NOT_SET
+  switch (unit) {
+    case 'months_of_fees':
+      return `${formatNumber(value, 'month')} of fees`
+    case 'eur':
+      return formatEur(value)
+    case 'days':
+      return formatNumber(value, 'day')
+    case 'percent':
+      return formatPercent(value)
+    case 'region':
+      return DECIMAL.format(value)
+  }
 }
 
 /** Three-state: unknown is not the same as "No". */

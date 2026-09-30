@@ -5,6 +5,7 @@ import { useActionState } from 'react'
 
 import { deleteAccountAction } from '@/app/lib/actions/accounts'
 import { deleteDealAction } from '@/app/lib/actions/deals'
+import { deleteProvisionAction } from '@/app/lib/actions/provisions'
 import { initialDealDeskActionState } from '@/app/lib/actions/deal-desk-action-state'
 
 import { ERROR_CLASS, SECONDARY_LINK_CLASS } from './styles'
@@ -16,6 +17,11 @@ const DELETE_BUTTON_CLASS =
 const TARGETS = {
   deal: { action: deleteDealAction, idField: 'dealId', label: 'Delete deal' },
   account: { action: deleteAccountAction, idField: 'accountId', label: 'Delete account' },
+  provision: {
+    action: deleteProvisionAction,
+    idField: 'provisionId',
+    label: 'Delete provision',
+  },
 } as const
 
 /**

@@ -2,6 +2,8 @@ import {
   isDealStage,
   isDealType,
   isEvidenceType,
+  isProvisionType,
+  isProvisionValueUnit,
   type Account,
   type CreateAccountInput,
   type CreateEvidenceItemInput,
@@ -10,6 +12,8 @@ import {
   type Deal,
   type DealStage,
   type DealType,
+  type ProvisionType,
+  type ProvisionValueUnit,
   type UpdateDealInput,
 } from './domain'
 import { splitIntoParagraphs } from './excerpts'
@@ -476,6 +480,183 @@ export function parseEvidenceForm(formData: FormData): FormResult<EvidenceTerms>
       document_date: documentDate,
       is_executed: rawExecuted === 'yes',
     },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Provisions (Contract / Document Intelligence V1)
+// ---------------------------------------------------------------------------
+
+/** The provision form's value fields, in the order the form shows them. */
+export const PROVISION_FORM_FIELDS = [
+  'provisionType',
+  'valueText',
+  'valueNumeric',
+  'valueUnit',
+] as const
+
+/** `value_text` has no length check in the schema, so the application caps it. */
+export const MAX_PROVISION_VALUE_LENGTH = 500
+
+/** How many excerpts one request may cite: a bound on each batched insert. */
+export const MAX_CITATIONS_PER_REQUEST = 20
+
+/**
+ * The units each provision type's number may be stated in. A type with none
+ * takes no number: its term is only the value text. `region` is in the schema
+ * vocabulary but is not a number, so it is never allowed (known schema debt).
+ */
+export const PROVISION_UNITS_BY_TYPE: Record<ProvisionType, readonly ProvisionValueUnit[]> = {
+  liability_cap: ['months_of_fees', 'eur'],
+  payment_terms: ['days'],
+  auto_renewal: ['days'],
+  termination: ['days'],
+  discount: ['percent'],
+  data_residency: [],
+  governing_law: [],
+}
+
+/** A provision's value as stored: the text, and a number with its unit or neither. */
+export type ProvisionValue = {
+  value_text: string
+  value_numeric: number | null
+  value_unit: ProvisionValueUnit | null
+}
+
+/** A non-negative number with up to two decimals, as `numeric` stores it. */
+const PROVISION_NUMBER_PATTERN = /^\d{1,12}(\.\d{1,2})?$/
+
+/**
+ * Reads the value fields for a provision of `type`, recording any errors on
+ * `read`. The number and unit are both given or both left out, and the unit
+ * must be one `PROVISION_UNITS_BY_TYPE` allows for the type.
+ */
+function readProvisionValue(
+  read: FieldReader,
+  formData: FormData,
+  type: ProvisionType | null,
+): ProvisionValue | null {
+  const valueText = read.requiredName('valueText', 'a value', MAX_PROVISION_VALUE_LENGTH)
+
+  const rawNumber = readText(formData, 'valueNumeric')
+  let valueNumeric: number | null = null
+  if (rawNumber !== null) {
+    if (PROVISION_NUMBER_PATTERN.test(rawNumber)) valueNumeric = Number(rawNumber)
+    else read.errorFor('valueNumeric', 'Enter a number using digits only, with up to two decimals.')
+  }
+
+  const rawUnit = readText(formData, 'valueUnit')
+  const valueUnit = isProvisionValueUnit(rawUnit) ? rawUnit : null
+  if (rawUnit !== null && valueUnit === null) read.errorFor('valueUnit', 'Choose a unit.')
+
+  if (type !== null && (rawNumber !== null || rawUnit !== null)) {
+    const allowed = PROVISION_UNITS_BY_TYPE[type]
+    if (allowed.length === 0) {
+      read.errorFor('valueNumeric', 'This type of provision takes no number; state it in the value.')
+    } else if (rawNumber === null) {
+      read.errorFor('valueNumeric', 'Enter the number for this unit.')
+    } else if (rawUnit === null) {
+      read.errorFor('valueUnit', 'Choose the unit of the number.')
+    } else if (valueUnit !== null && !allowed.includes(valueUnit)) {
+      read.errorFor('valueUnit', 'Choose a unit that fits this type of provision.')
+    }
+  }
+
+  if (valueText === null) return null
+  return { value_text: valueText, value_numeric: valueNumeric, value_unit: valueUnit }
+}
+
+/**
+ * Reads the chosen excerpt ids: uuids only, duplicates removed, at most
+ * `MAX_CITATIONS_PER_REQUEST`, and at least one when `required`. Whether each
+ * is an excerpt of the provision's deal is for the caller to check.
+ */
+function readExcerptIds(
+  read: FieldReader,
+  formData: FormData,
+  { required }: { required: boolean },
+): string[] {
+  const raw = formData.getAll('excerptIds')
+  const ids = [...new Set(raw.filter((value): value is string => typeof value === 'string'))]
+
+  if (raw.some((value) => typeof value !== 'string' || !UUID_PATTERN.test(value))) {
+    read.errorFor('excerptIds', 'Choose excerpts from the list.')
+  } else if (ids.length > MAX_CITATIONS_PER_REQUEST) {
+    read.errorFor(
+      'excerptIds',
+      `Choose at most ${MAX_CITATIONS_PER_REQUEST} excerpts at a time.`,
+    )
+  } else if (required && ids.length === 0) {
+    read.errorFor('excerptIds', 'Choose at least one excerpt.')
+  }
+
+  return ids
+}
+
+/** A new provision as its form describes it, with the excerpts it cites. */
+export type ProvisionTerms = ProvisionValue & {
+  provision_type: ProvisionType
+  excerpt_ids: string[]
+}
+
+/**
+ * Parses the add-provision form. The deal, `source`, `source_finding_id` and
+ * `confirmed_at` are never read: the Server Action takes the deal from the
+ * verified deal and fixes the provenance itself.
+ */
+export function parseProvisionForm(formData: FormData): FormResult<ProvisionTerms> {
+  const read = new FieldReader(formData)
+
+  const rawType = formData.get('provisionType')
+  const provisionType = isProvisionType(rawType) ? rawType : null
+  if (provisionType === null) read.errorFor('provisionType', 'Choose a type of provision.')
+
+  const value = readProvisionValue(read, formData, provisionType)
+  const excerptIds = readExcerptIds(read, formData, { required: false })
+
+  if (Object.keys(read.errors).length > 0 || provisionType === null || value === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value: { ...value, provision_type: provisionType, excerpt_ids: excerptIds } }
+}
+
+/**
+ * Parses the edit-provision form for a provision of `type`: its value only.
+ * The type, deal, provenance and `confirmed_at` are fixed and never read.
+ */
+export function parseProvisionValueForm(
+  formData: FormData,
+  type: ProvisionType,
+): FormResult<ProvisionValue> {
+  const read = new FieldReader(formData)
+  const value = readProvisionValue(read, formData, type)
+
+  if (Object.keys(read.errors).length > 0 || value === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value }
+}
+
+/** Parses the add-citations form: at least one, at most 20, excerpt ids. */
+export function parseCitationForm(formData: FormData): FormResult<string[]> {
+  const read = new FieldReader(formData)
+  const excerptIds = readExcerptIds(read, formData, { required: true })
+
+  if (Object.keys(read.errors).length > 0) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value: excerptIds }
+}
+
+/** An existing provision's value as the edit form's starting values. */
+export function toProvisionFormValues(provision: ProvisionValue): Record<string, string> {
+  return {
+    valueText: provision.value_text,
+    valueNumeric: toFormNumber(provision.value_numeric),
+    valueUnit: provision.value_unit ?? '',
   }
 }
 

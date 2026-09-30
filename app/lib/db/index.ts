@@ -59,6 +59,7 @@ export {
   createEvidenceItem,
   getEvidenceExcerpt,
   getEvidenceItem,
+  listDealExcerptsByItem,
   listEvidenceExcerpts,
   listEvidenceItems,
 } from './evidence'
@@ -72,9 +73,11 @@ export {
 
 export {
   addProvisionExcerpt,
+  addProvisionExcerpts,
   createProvision,
   deleteProvision,
   getProvision,
+  listProvisionCitations,
   listProvisionExcerpts,
   listProvisions,
   removeProvisionExcerpt,
