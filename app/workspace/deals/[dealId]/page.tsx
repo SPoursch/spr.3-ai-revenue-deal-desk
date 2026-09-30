@@ -18,7 +18,7 @@ import {
   formatNumber,
   formatPercent,
 } from '@/app/lib/deal-desk/format'
-import { getAccount, getAuthenticatedUser, getDeal } from '@/app/lib/db'
+import { getAccount, getAuthenticatedUser, getDeal, listDeals } from '@/app/lib/db'
 
 /**
  * One deal, read-only.
@@ -27,6 +27,10 @@ import { getAccount, getAuthenticatedUser, getDeal } from '@/app/lib/db'
  * whether it is visible: someone else's deal and a deal that does not exist
  * are the same `null`, and both render the not-found page. Nothing on it
  * reveals whether the id exists.
+ *
+ * Renewal lineage (U13) links the deal to the deal it renews, if any, and to
+ * every deal that renews it. Both are the user's own: the composite foreign
+ * key keeps a renewal on its owner's deals.
  */
 export const dynamic = 'force-dynamic'
 
@@ -54,7 +58,11 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
     notFound()
   }
 
-  const account = await getAccount(deal.account_id)
+  const [account, predecessor, renewals] = await Promise.all([
+    getAccount(deal.account_id),
+    deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
+    listDeals().then((deals) => deals.filter((d) => d.predecessor_deal_id === deal.id)),
+  ])
 
   const details: [string, string][] = [
     ['Account', account?.name ?? 'Unknown account'],
@@ -83,6 +91,9 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
           <Link href={`/workspace/deals/${deal.id}/edit`} className={PRIMARY_LINK_CLASS}>
             Edit deal
           </Link>
+          <Link href={`/workspace/deals/${deal.id}/renew`} className={SECONDARY_LINK_CLASS}>
+            Create renewal
+          </Link>
           <Link href={`/workspace/deals/${deal.id}/delete`} className={SECONDARY_LINK_CLASS}>
             Delete deal
           </Link>
@@ -101,6 +112,29 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
           ))}
         </dl>
       </section>
+
+      {predecessor || renewals.length > 0 ? (
+        <section aria-label="Renewal lineage" className={`${CARD_CLASS} mt-6 px-6 py-4`}>
+          <ul className="flex flex-col gap-2 text-[15px]">
+            {predecessor ? (
+              <li>
+                Renewal of{' '}
+                <Link href={`/workspace/deals/${predecessor.id}`} className={TEXT_LINK_CLASS}>
+                  {predecessor.name}
+                </Link>
+              </li>
+            ) : null}
+            {renewals.map((renewal) => (
+              <li key={renewal.id}>
+                Renewed by{' '}
+                <Link href={`/workspace/deals/${renewal.id}`} className={TEXT_LINK_CLASS}>
+                  {renewal.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </main>
   )
 }

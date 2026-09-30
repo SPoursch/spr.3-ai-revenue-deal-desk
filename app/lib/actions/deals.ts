@@ -9,6 +9,7 @@ import {
   isUuid,
   parseDealForm,
   parseDealUpdateForm,
+  parseRenewalForm,
   readFormValues,
 } from '../deal-desk/forms'
 import { createDeal, DealDeskDatabaseError, deleteDeal, getDeal, updateDeal } from '../db'
@@ -32,6 +33,7 @@ const CREATE_FAILED_MESSAGE = 'Could not create the deal. Please try again.'
 const NOT_FOUND_MESSAGE = 'This deal no longer exists, or it is not one of yours.'
 const UPDATE_FAILED_MESSAGE = 'Could not save the deal. Please try again.'
 const DELETE_FAILED_MESSAGE = 'Could not delete the deal. Please try again.'
+const CREATE_RENEWAL_FAILED_MESSAGE = 'Could not create the renewal. Please try again.'
 const HAS_RENEWAL_MESSAGE =
   'This deal cannot be deleted while a renewal is linked to it. Delete the renewal first.'
 
@@ -83,6 +85,70 @@ export async function createDealAction(
 
   // Outside the try block: redirect() works by throwing.
   redirect(`${WORKSPACE_PATH}/deals/${deal.id}`)
+}
+
+/**
+ * Creates a renewal of one of the caller's deals, then opens it.
+ *
+ * A renewal is a new deal linked to its predecessor (U13). The submitted
+ * `predecessorDealId` only says which deal is being renewed: it is read as
+ * the caller, so row level security decides whether it is theirs, and
+ * someone else's reads the same as one that does not exist. The renewal's
+ * type is always `renewal` and its account is the stored predecessor's;
+ * nothing the form submits for either is read.
+ */
+export async function createRenewalAction(
+  _state: DealDeskActionState,
+  formData: FormData,
+): Promise<DealDeskActionState> {
+  if (await requireUser()) {
+    return failure(SIGNED_OUT_MESSAGE)
+  }
+
+  const predecessorDealId = formData.get('predecessorDealId')
+  const values = readFormValues(formData, DEAL_FORM_FIELDS)
+
+  if (!isUuid(predecessorDealId)) {
+    return failure(NOT_FOUND_MESSAGE, {}, values)
+  }
+
+  const parsed = parseRenewalForm(formData)
+
+  if (!parsed.ok) {
+    return failure(INVALID_MESSAGE, parsed.fieldErrors, values)
+  }
+
+  let renewal: Deal
+
+  try {
+    const predecessor = await getDeal(predecessorDealId)
+
+    if (!predecessor) {
+      return failure(NOT_FOUND_MESSAGE, {}, values)
+    }
+
+    renewal = await createDeal({
+      ...parsed.value,
+      account_id: predecessor.account_id,
+      predecessor_deal_id: predecessor.id,
+    })
+  } catch (error) {
+    if (error instanceof DealDeskDatabaseError && error.kind === 'invalid_input') {
+      console.error('[deals] renewal insert rejected:', error.message)
+
+      return failure(INPUT_REJECTED_MESSAGE, {}, values)
+    }
+
+    console.error('[deals] renewal insert failed:', error)
+
+    return failure(CREATE_RENEWAL_FAILED_MESSAGE, {}, values)
+  }
+
+  // The predecessor's page now links to the renewal, so not only the list.
+  revalidatePath(WORKSPACE_PATH, 'layout')
+
+  // Outside the try block: redirect() works by throwing.
+  redirect(`${WORKSPACE_PATH}/deals/${renewal.id}`)
 }
 
 /**

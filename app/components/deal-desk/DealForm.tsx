@@ -2,7 +2,11 @@
 
 import { useActionState } from 'react'
 
-import { createDealAction, updateDealAction } from '@/app/lib/actions/deals'
+import {
+  createDealAction,
+  createRenewalAction,
+  updateDealAction,
+} from '@/app/lib/actions/deals'
 import {
   formValues,
   initialDealDeskActionState,
@@ -17,9 +21,9 @@ import { ERROR_CLASS, FIELD_CLASS, SUBMIT_CLASS } from './styles'
 export type AccountOption = { id: string; name: string }
 
 /**
- * A renewal must name the deal it follows (U13). Choosing a predecessor
- * belongs to the renewal part of Deal Records, so until then the form offers
- * the other types; the server rejects a renewal without a predecessor anyway.
+ * A renewal must name the deal it follows (U13), so it is created from that
+ * deal's page (`renewal` below), never by picking the type here; the server
+ * rejects a renewal without a predecessor anyway.
  */
 const OFFERED_DEAL_TYPES = DEAL_TYPES.filter((type) => type !== 'renewal')
 
@@ -33,25 +37,37 @@ export type DealEdit = {
   initial: Record<string, string>
 }
 
+/** What the form needs to create a renewal of an existing deal. */
+export type DealRenewal = {
+  predecessorDealId: string
+  /** The predecessor's account, which the renewal stays on. */
+  accountName: string
+}
+
 /**
- * Creates a deal on one of the user's accounts, or edits an existing deal.
+ * Creates a deal on one of the user's accounts, edits an existing deal, or
+ * creates a renewal of one.
  * Validation happens in the Server Action; see AccountForm for why the form
  * is keyed by the result.
  *
  * When editing, the account is shown but cannot be changed: the database
- * grants no UPDATE on a deal's account or predecessor.
+ * grants no UPDATE on a deal's account or predecessor. A renewal is shown its
+ * predecessor's account and offers no deal type: the Server Action takes both
+ * from the predecessor.
  */
 export function DealForm({
   accounts = [],
   defaultAccountId = null,
   edit,
+  renewal,
 }: {
   accounts?: AccountOption[]
   defaultAccountId?: string | null
   edit?: DealEdit
+  renewal?: DealRenewal
 }) {
   const [state, formAction, pending] = useActionState(
-    edit ? updateDealAction : createDealAction,
+    renewal ? createRenewalAction : edit ? updateDealAction : createDealAction,
     initialDealDeskActionState,
   )
   const { fieldErrors } = state
@@ -88,8 +104,21 @@ export function DealForm({
       ) : null}
 
       {edit ? <input type="hidden" name="dealId" value={edit.dealId} /> : null}
+      {renewal ? (
+        <input type="hidden" name="predecessorDealId" value={renewal.predecessorDealId} />
+      ) : null}
 
-      {edit ? (
+      {renewal ? (
+        <FormField
+          id="accountId"
+          label="Account"
+          hint="A renewal stays with the account of the deal it renews."
+        >
+          {(props) => (
+            <input {...props} readOnly value={renewal.accountName} className={FIELD_CLASS} />
+          )}
+        </FormField>
+      ) : edit ? (
         <FormField
           id="accountId"
           label="Account"
@@ -136,26 +165,28 @@ export function DealForm({
       </FormField>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <FormField id="dealType" label="Deal type" error={fieldErrors.dealType}>
-          {(props) => (
-            <select
-              {...props}
-              name="dealType"
-              required
-              defaultValue={values.dealType ?? ''}
-              className={FIELD_CLASS}
-            >
-              <option value="" disabled>
-                Choose a type
-              </option>
-              {dealTypes.map((type) => (
-                <option key={type} value={type}>
-                  {DEAL_TYPE_LABELS[type]}
+        {renewal ? null : (
+          <FormField id="dealType" label="Deal type" error={fieldErrors.dealType}>
+            {(props) => (
+              <select
+                {...props}
+                name="dealType"
+                required
+                defaultValue={values.dealType ?? ''}
+                className={FIELD_CLASS}
+              >
+                <option value="" disabled>
+                  Choose a type
                 </option>
-              ))}
-            </select>
-          )}
-        </FormField>
+                {dealTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {DEAL_TYPE_LABELS[type]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </FormField>
+        )}
 
         <FormField id="stage" label="Stage" error={fieldErrors.stage}>
           {(props) => (
@@ -213,7 +244,15 @@ export function DealForm({
 
       <div>
         <button type="submit" disabled={pending} className={SUBMIT_CLASS}>
-          {edit ? (pending ? 'Saving…' : 'Save changes') : pending ? 'Creating…' : 'Create deal'}
+          {edit
+            ? pending
+              ? 'Saving…'
+              : 'Save changes'
+            : pending
+              ? 'Creating…'
+              : renewal
+                ? 'Create renewal'
+                : 'Create deal'}
         </button>
       </div>
     </form>

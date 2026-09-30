@@ -3,9 +3,9 @@ import {
   isDealType,
   type Account,
   type CreateAccountInput,
-  type CreateDealInput,
+  type CreateNonRenewalDealInput,
+  type CreateRenewalDealInput,
   type Deal,
-  type DealId,
   type DealStage,
   type DealType,
   type UpdateDealInput,
@@ -149,12 +149,6 @@ class FieldReader {
     return value
   }
 
-  optionalUuid(field: string, message: string): string | null {
-    const value = readText(this.formData, field)
-    if (value !== null && !UUID_PATTERN.test(value)) return this.fail(field, message)
-    return value
-  }
-
   eur(field: string, required: boolean): number | null {
     const value = readText(this.formData, field)
     if (value === null) {
@@ -237,11 +231,18 @@ type DealTerms = Omit<UpdateDealInput, 'deal_type' | 'stage'> & {
  * Reads the fields a deal has whether it is being created or edited,
  * recording any errors on `read`. Returns null when a required field is
  * missing or invalid.
+ *
+ * `fixedDealType`, when given, is the deal type, and the submitted
+ * `dealType` is not read at all.
  */
-function readDealTerms(read: FieldReader, formData: FormData): DealTerms | null {
+function readDealTerms(
+  read: FieldReader,
+  formData: FormData,
+  fixedDealType?: DealType,
+): DealTerms | null {
   const name = read.requiredName('name', 'a deal name')
 
-  const dealType = formData.get('dealType')
+  const dealType = fixedDealType ?? formData.get('dealType')
   if (!isDealType(dealType)) read.errorFor('dealType', 'Choose a deal type.')
 
   const stage = formData.get('stage')
@@ -294,8 +295,15 @@ function readDealTerms(read: FieldReader, formData: FormData): DealTerms | null 
   }
 }
 
-/** Parses the deal form into `CreateDealInput`. */
-export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
+/**
+ * Parses the deal form into a `CreateNonRenewalDealInput`.
+ *
+ * A renewal is created only from the deal it renews (`parseRenewalForm` and
+ * `createRenewalAction`), which keeps it on its predecessor's account (U13).
+ * So this form refuses the `renewal` type and never reads a predecessor:
+ * nothing submitted here can create renewal lineage.
+ */
+export function parseDealForm(formData: FormData): FormResult<CreateNonRenewalDealInput> {
   const read = new FieldReader(formData)
 
   const accountId = readText(formData, 'accountId')
@@ -303,35 +311,27 @@ export function parseDealForm(formData: FormData): FormResult<CreateDealInput> {
     read.errorFor('accountId', 'Choose the account this deal belongs to.')
   }
 
-  const predecessorDealId = read.optionalUuid(
-    'predecessorDealId',
-    'Choose the deal this one follows from the list.',
-  )
   const terms = readDealTerms(read, formData)
 
-  // A renewal is a new deal linked to its predecessor (U13). Read from the
-  // submission, so this is reported even when other fields are invalid.
-  if (
-    formData.get('dealType') === 'renewal' &&
-    predecessorDealId === null &&
-    !read.errors.predecessorDealId
-  ) {
-    read.errorFor('predecessorDealId', 'Choose the deal this renewal follows.')
+  // Read from the submission, so this is reported even when other fields
+  // are invalid.
+  if (formData.get('dealType') === 'renewal') {
+    read.errorFor('dealType', 'Create a renewal from the deal it renews.')
   }
 
-  if (Object.keys(read.errors).length > 0 || accountId === null || terms === null) {
+  if (
+    Object.keys(read.errors).length > 0 ||
+    accountId === null ||
+    terms === null ||
+    terms.deal_type === 'renewal'
+  ) {
     return { ok: false, fieldErrors: read.errors }
   }
 
-  const { deal_type: dealType, ...rest } = terms
-  const base = { ...rest, account_id: accountId }
-
-  const value: CreateDealInput =
-    dealType === 'renewal'
-      ? { ...base, deal_type: 'renewal', predecessor_deal_id: predecessorDealId as DealId }
-      : { ...base, deal_type: dealType, predecessor_deal_id: predecessorDealId }
-
-  return { ok: true, value }
+  return {
+    ok: true,
+    value: { ...terms, account_id: accountId, deal_type: terms.deal_type, predecessor_deal_id: null },
+  }
 }
 
 /**
@@ -363,6 +363,31 @@ export function parseDealUpdateForm(
   }
 
   return { ok: true, value: terms }
+}
+
+/**
+ * A renewal as its form describes it: everything but its account and
+ * predecessor, which come from the predecessor deal itself.
+ */
+export type RenewalTerms = Omit<CreateRenewalDealInput, 'account_id' | 'predecessor_deal_id'>
+
+/**
+ * Parses the renewal form into the renewal's terms, always of type `renewal`.
+ *
+ * A renewal belongs to its predecessor's account (U13), so anything submitted
+ * as `dealType`, `accountId` or `predecessorDealId` is ignored here; the
+ * Server Action takes the predecessor from its own id and the account from
+ * the stored predecessor.
+ */
+export function parseRenewalForm(formData: FormData): FormResult<RenewalTerms> {
+  const read = new FieldReader(formData)
+  const terms = readDealTerms(read, formData, 'renewal')
+
+  if (Object.keys(read.errors).length > 0 || terms === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value: { ...terms, deal_type: 'renewal' } }
 }
 
 /** Whether a value is a uuid, the shape of every record id. */

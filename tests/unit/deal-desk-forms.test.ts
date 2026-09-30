@@ -5,6 +5,7 @@ import {
   parseAccountForm,
   parseDealForm,
   parseDealUpdateForm,
+  parseRenewalForm,
   toAccountFormValues,
   toDealFormValues,
 } from '../../app/lib/deal-desk/forms'
@@ -221,34 +222,34 @@ describe('parseDealForm', () => {
     )
   })
 
-  it('requires a predecessor for a renewal', () => {
-    expect(dealErrors({ ...VALID_DEAL, dealType: 'renewal' })).toHaveProperty(
-      'predecessorDealId',
-    )
+  it('refuses the renewal type: a renewal is created from the deal it renews', () => {
+    const errors = dealErrors({
+      ...VALID_DEAL,
+      dealType: 'renewal',
+      predecessorDealId: PREDECESSOR_ID,
+    })
+
+    expect(errors.dealType).toMatch(/from the deal it renews/i)
   })
 
-  it('reports a missing predecessor together with other invalid fields', () => {
+  it('reports a refused renewal together with other invalid fields', () => {
     const errors = dealErrors({ ...VALID_DEAL, dealType: 'renewal', arrEur: '-1' })
 
-    expect(errors).toHaveProperty('predecessorDealId')
+    expect(errors).toHaveProperty('dealType')
     expect(errors).toHaveProperty('arrEur')
   })
 
-  it('accepts a renewal that names its predecessor', () => {
-    const result = parseDealForm(
-      form({ ...VALID_DEAL, dealType: 'renewal', predecessorDealId: PREDECESSOR_ID }),
-    )
+  it('never reads a predecessor, so it cannot create renewal lineage', () => {
+    for (const predecessorDealId of [PREDECESSOR_ID, 'deal-1']) {
+      const result = parseDealForm(
+        form({ ...VALID_DEAL, dealType: 'expansion', predecessorDealId }),
+      )
 
-    expect(result.ok && result.value).toMatchObject({
-      deal_type: 'renewal',
-      predecessor_deal_id: PREDECESSOR_ID,
-    })
-  })
-
-  it('rejects a predecessor that is not a uuid', () => {
-    expect(
-      dealErrors({ ...VALID_DEAL, predecessorDealId: 'deal-1' }),
-    ).toHaveProperty('predecessorDealId')
+      expect(result.ok && result.value).toMatchObject({
+        deal_type: 'expansion',
+        predecessor_deal_id: null,
+      })
+    }
   })
 
   it('ignores fields it does not know, including user_id', () => {
@@ -324,6 +325,59 @@ describe('parseDealUpdateForm', () => {
     })
 
     expect(result.ok && result.value.deal_type).toBe('renewal')
+  })
+})
+
+describe('parseRenewalForm', () => {
+  const VALID_RENEWAL = { name: 'Acme 2028', stage: 'discovery', arrEur: '66000' }
+
+  it('reads the terms as a renewal, never the submitted type, account or predecessor', () => {
+    const result = parseRenewalForm(
+      form({
+        ...VALID_RENEWAL,
+        renewalDate: '2028-03-31',
+        dealType: 'new_business',
+        accountId: ACCOUNT_ID,
+        predecessorDealId: PREDECESSOR_ID,
+        user_id: 'someone-else',
+      }),
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        name: 'Acme 2028',
+        deal_type: 'renewal',
+        stage: 'discovery',
+        arr_eur: 66000,
+        tcv_eur: null,
+        list_price_eur: null,
+        discount_pct: null,
+        term_months: null,
+        start_date: null,
+        end_date: null,
+        renewal_date: '2028-03-31',
+        notice_period_days: null,
+        auto_renew: null,
+      },
+    })
+  })
+
+  it('does not ask for a deal type', () => {
+    const result = parseRenewalForm(form(VALID_RENEWAL))
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('applies the same field rules as creating a deal', () => {
+    const result = parseRenewalForm(
+      form({ ...VALID_RENEWAL, name: '', arrEur: '-1', stage: 'won' }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && Object.keys(result.fieldErrors).sort()).toEqual(
+      ['arrEur', 'name', 'stage'].sort(),
+    )
   })
 })
 
