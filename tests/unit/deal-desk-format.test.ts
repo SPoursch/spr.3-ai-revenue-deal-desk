@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest'
 import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
+  EVIDENCE_TYPE_LABELS,
   formatBoolean,
   formatDate,
   formatEur,
   formatNumber,
   formatPercent,
 } from '../../app/lib/deal-desk/format'
-import { DEAL_STAGES, DEAL_TYPES } from '../../app/lib/deal-desk/domain'
+import { DEAL_STAGES, DEAL_TYPES, EVIDENCE_TYPES } from '../../app/lib/deal-desk/domain'
 
 /** Display helpers for Deal Records (slice 1). A missing value reads "Not set". */
 
@@ -64,5 +65,11 @@ describe('vocabulary labels', () => {
     expect(Object.keys(DEAL_STAGE_LABELS).sort()).toEqual([...DEAL_STAGES].sort())
     expect(DEAL_TYPE_LABELS.new_business).toBe('New business')
     expect(DEAL_STAGE_LABELS.negotiation).toBe('Negotiation')
+  })
+
+  it('labels every evidence type', () => {
+    expect(Object.keys(EVIDENCE_TYPE_LABELS).sort()).toEqual([...EVIDENCE_TYPES].sort())
+    expect(EVIDENCE_TYPE_LABELS.order_form).toBe('Order form')
+    expect(EVIDENCE_TYPE_LABELS.call_note).toBe('Call note')
   })
 })

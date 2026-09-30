@@ -5,6 +5,7 @@ import {
   parseAccountForm,
   parseDealForm,
   parseDealUpdateForm,
+  parseEvidenceForm,
   parseRenewalForm,
   toAccountFormValues,
   toDealFormValues,
@@ -378,6 +379,103 @@ describe('parseRenewalForm', () => {
     expect(!result.ok && Object.keys(result.fieldErrors).sort()).toEqual(
       ['arrEur', 'name', 'stage'].sort(),
     )
+  })
+})
+
+describe('parseEvidenceForm', () => {
+  const VALID_EVIDENCE = {
+    evidenceType: 'order_form',
+    title: ' Order form 2027 ',
+    bodyText: '  Term: 12 months.\r\n\r\nFees: EUR 60,000.  ',
+  }
+
+  it('accepts the required fields, keeps the body exactly as pasted and leaves provenance unset', () => {
+    expect(parseEvidenceForm(form(VALID_EVIDENCE))).toEqual({
+      ok: true,
+      value: {
+        evidence_type: 'order_form',
+        title: 'Order form 2027',
+        body_text: '  Term: 12 months.\r\n\r\nFees: EUR 60,000.  ',
+        author: null,
+        version_label: null,
+        document_date: null,
+        is_executed: false,
+      },
+    })
+  })
+
+  it('reads the provenance fields', () => {
+    const result = parseEvidenceForm(
+      form({
+        ...VALID_EVIDENCE,
+        author: ' Jane Buyer ',
+        versionLabel: 'v2',
+        documentDate: '2027-01-15',
+        isExecuted: 'yes',
+      }),
+    )
+
+    expect(result.ok && result.value).toMatchObject({
+      author: 'Jane Buyer',
+      version_label: 'v2',
+      document_date: '2027-01-15',
+      is_executed: true,
+    })
+  })
+
+  it('reports every invalid field at once', () => {
+    const result = parseEvidenceForm(
+      form({
+        evidenceType: 'contract',
+        title: '  ',
+        bodyText: ' \r\n\t ',
+        documentDate: '2027-02-30',
+        isExecuted: 'maybe',
+      }),
+    )
+
+    expect(!result.ok && Object.keys(result.fieldErrors).sort()).toEqual(
+      ['bodyText', 'documentDate', 'evidenceType', 'isExecuted', 'title'].sort(),
+    )
+  })
+
+  it('caps the title at 300 characters and the text at 100,000', () => {
+    const result = parseEvidenceForm(
+      form({ ...VALID_EVIDENCE, title: 'x'.repeat(301), bodyText: 'y'.repeat(100_001) }),
+    )
+
+    expect(!result.ok && result.fieldErrors).toMatchObject({
+      title: expect.stringMatching(/300 characters/),
+      bodyText: expect.stringMatching(/100,000 characters/),
+    })
+    expect(parseEvidenceForm(form({ ...VALID_EVIDENCE, title: 'x'.repeat(300) })).ok).toBe(true)
+  })
+
+  it('caps the text at 500 paragraphs, however short they are', () => {
+    const paragraphs = (count: number) => Array(count).fill('p').join('\r\n\r\n')
+
+    const result = parseEvidenceForm(form({ ...VALID_EVIDENCE, bodyText: paragraphs(501) }))
+
+    expect(!result.ok && result.fieldErrors.bodyText).toMatch(/500 paragraphs/)
+    expect(parseEvidenceForm(form({ ...VALID_EVIDENCE, bodyText: paragraphs(500) })).ok).toBe(true)
+  })
+
+  it('never reads the deal, the owner or the source kind from the form', () => {
+    const result = parseEvidenceForm(
+      form({
+        ...VALID_EVIDENCE,
+        dealId: ACCOUNT_ID,
+        deal_id: ACCOUNT_ID,
+        user_id: 'someone-else',
+        source_kind: 'uploaded',
+        supersedes_evidence_id: PREDECESSOR_ID,
+      }),
+    )
+
+    expect(result.ok).toBe(true)
+    for (const key of ['deal_id', 'user_id', 'source_kind', 'supersedes_evidence_id']) {
+      expect(result.ok && result.value).not.toHaveProperty(key)
+    }
   })
 })
 

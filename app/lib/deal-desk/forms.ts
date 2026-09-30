@@ -1,8 +1,10 @@
 import {
   isDealStage,
   isDealType,
+  isEvidenceType,
   type Account,
   type CreateAccountInput,
+  type CreateEvidenceItemInput,
   type CreateNonRenewalDealInput,
   type CreateRenewalDealInput,
   type Deal,
@@ -10,6 +12,7 @@ import {
   type DealType,
   type UpdateDealInput,
 } from './domain'
+import { splitIntoParagraphs } from './excerpts'
 
 /**
  * Server-side parsing of the Deal Records forms.
@@ -61,6 +64,17 @@ export const DEAL_FORM_FIELDS = [
   'autoRenew',
 ] as const
 
+/** The evidence form's field names, in the order the form shows them. */
+export const EVIDENCE_FORM_FIELDS = [
+  'evidenceType',
+  'title',
+  'bodyText',
+  'author',
+  'versionLabel',
+  'documentDate',
+  'isExecuted',
+] as const
+
 /**
  * The submitted values of the named fields, as strings, for re-filling a
  * form after a failed submission. Files and unknown fields are dropped.
@@ -81,6 +95,19 @@ export function readFormValues(
 
 /** Names, and the free-text account fields, are capped as the schema caps names. */
 const MAX_NAME_LENGTH = 200
+/** `evidence_items_title_check`: 1–300 characters once trimmed. */
+const MAX_EVIDENCE_TITLE_LENGTH = 300
+/**
+ * Pasted evidence is capped well below the Server Action body limit (1 MB by
+ * default), so a long document gets a field message, not a failed request.
+ */
+export const MAX_EVIDENCE_BODY_LENGTH = 100_000
+/**
+ * Each paragraph becomes one excerpt, stored with one insert, so the count is
+ * capped: 100,000 characters of one-letter paragraphs would otherwise be
+ * tens of thousands of inserts in a single request.
+ */
+export const MAX_EVIDENCE_PARAGRAPHS = 500
 const MAX_TEXT_LENGTH = 200
 
 /** `numeric(14,2)`: up to 12 whole digits and 2 decimals, never negative. */
@@ -132,11 +159,11 @@ class FieldReader {
     return null
   }
 
-  requiredName(field: string, label: string): string | null {
+  requiredName(field: string, label: string, maxLength = MAX_NAME_LENGTH): string | null {
     const value = readText(this.formData, field)
     if (value === null) return this.fail(field, `Enter ${label}.`)
-    if (value.length > MAX_NAME_LENGTH) {
-      return this.fail(field, `Keep ${label} to ${MAX_NAME_LENGTH} characters or fewer.`)
+    if (value.length > maxLength) {
+      return this.fail(field, `Keep ${label} to ${maxLength} characters or fewer.`)
     }
     return value
   }
@@ -388,6 +415,68 @@ export function parseRenewalForm(formData: FormData): FormResult<RenewalTerms> {
   }
 
   return { ok: true, value: { ...terms, deal_type: 'renewal' } }
+}
+
+/** What the evidence form supplies: everything but the deal, which is the page's. */
+export type EvidenceTerms = Omit<CreateEvidenceItemInput, 'deal_id' | 'supersedes_evidence_id'>
+
+/**
+ * Parses the add-evidence form into the item's terms.
+ *
+ * The body is kept exactly as submitted, untrimmed, because excerpt offsets
+ * point into it; it only has to contain some text. The deal, owner, source
+ * kind and supersession are never read from the form: the Server Action takes
+ * the deal from the verified deal and the data layer fixes the rest.
+ */
+export function parseEvidenceForm(formData: FormData): FormResult<EvidenceTerms> {
+  const read = new FieldReader(formData)
+
+  const evidenceType = formData.get('evidenceType')
+  if (!isEvidenceType(evidenceType)) read.errorFor('evidenceType', 'Choose a type of evidence.')
+
+  const title = read.requiredName('title', 'a title', MAX_EVIDENCE_TITLE_LENGTH)
+
+  const rawBody = formData.get('bodyText')
+  const bodyText = typeof rawBody === 'string' ? rawBody : ''
+  if (bodyText.trim().length === 0) {
+    read.errorFor('bodyText', 'Paste the text of the evidence.')
+  } else if (bodyText.length > MAX_EVIDENCE_BODY_LENGTH) {
+    read.errorFor(
+      'bodyText',
+      `Keep the text to ${MAX_EVIDENCE_BODY_LENGTH.toLocaleString('en-GB')} characters or fewer.`,
+    )
+  } else if (splitIntoParagraphs(bodyText).length > MAX_EVIDENCE_PARAGRAPHS) {
+    read.errorFor(
+      'bodyText',
+      `Keep the text to ${MAX_EVIDENCE_PARAGRAPHS} paragraphs or fewer.`,
+    )
+  }
+
+  const author = read.optionalText('author')
+  const versionLabel = read.optionalText('versionLabel')
+  const documentDate = read.date('documentDate')
+
+  const rawExecuted = formData.get('isExecuted')
+  if (rawExecuted !== null && rawExecuted !== 'yes') {
+    read.errorFor('isExecuted', 'Tick the box only if this is the executed version.')
+  }
+
+  if (Object.keys(read.errors).length > 0 || !isEvidenceType(evidenceType) || title === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return {
+    ok: true,
+    value: {
+      evidence_type: evidenceType,
+      title,
+      body_text: bodyText,
+      author,
+      version_label: versionLabel,
+      document_date: documentDate,
+      is_executed: rawExecuted === 'yes',
+    },
+  }
 }
 
 /** Whether a value is a uuid, the shape of every record id. */

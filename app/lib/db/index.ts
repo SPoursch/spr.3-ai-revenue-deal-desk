@@ -55,6 +55,7 @@ export {
 
 export {
   createEvidenceExcerpt,
+  createEvidenceExcerpts,
   createEvidenceItem,
   getEvidenceExcerpt,
   getEvidenceItem,

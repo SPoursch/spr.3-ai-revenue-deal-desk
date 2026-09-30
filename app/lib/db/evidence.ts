@@ -231,3 +231,34 @@ export async function createEvidenceExcerpt(
 
   return data
 }
+
+/**
+ * Adds several excerpts in one insert statement and returns the stored rows.
+ * One statement is atomic: either every excerpt is stored or none is, so an
+ * item is never left with only part of its excerpts. Spans are stored as
+ * given, as in `createEvidenceExcerpt()`.
+ */
+export async function createEvidenceExcerpts(
+  inputs: CreateEvidenceExcerptInput[],
+): Promise<EvidenceExcerpt[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(EVIDENCE_EXCERPTS_TABLE)
+    .insert(
+      inputs.map((input) => ({
+        evidence_item_id: input.evidence_item_id,
+        deal_id: input.deal_id,
+        ordinal: input.ordinal,
+        start_offset: input.start_offset,
+        end_offset: input.end_offset,
+        section_label: input.section_label ?? null,
+        content: input.content,
+      })),
+    )
+    .select(EVIDENCE_EXCERPT_COLUMNS)
+
+  if (error) {
+    throw new DealDeskDatabaseError('insert', EVIDENCE_EXCERPTS_TABLE, error)
+  }
+
+  return data
+}
