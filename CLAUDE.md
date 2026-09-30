@@ -99,8 +99,11 @@ destination, **not** the Sprint 3 scope (see "Scope").
   through the Server Actions in `app/lib/actions/accounts.ts` and `deals.ts`,
   and `/workspace/deals/[dealId]` shows a deal. Slice 2 adds editing and
   deleting deals and accounts (`…/edit`, `…/delete` with a confirmation page)
-  and the account list at `/workspace/accounts`. Renewal lineage is the next
-  Deal Records slice. There is no AI module yet.
+  and the account list at `/workspace/accounts`. Slice 3 adds renewal lineage:
+  `/workspace/deals/[dealId]/renew` creates a renewal of a deal, typed
+  Renewal, on the predecessor's account and linked through
+  `predecessor_deal_id`, and each deal's page links "Renewal of" /
+  "Renewed by". There is no AI module yet.
 - Deployed on Vercel at https://ai-rev-deal-desk.vercel.app. Automatic Git
   deployments are disabled (`vercel.json`); production is deployed manually
   after review and the security scan.

@@ -4,6 +4,7 @@ import {
   type Account,
   type CreateAccountInput,
   type CreateDealInput,
+  type CreateRenewalDealInput,
   type Deal,
   type DealId,
   type DealStage,
@@ -237,11 +238,18 @@ type DealTerms = Omit<UpdateDealInput, 'deal_type' | 'stage'> & {
  * Reads the fields a deal has whether it is being created or edited,
  * recording any errors on `read`. Returns null when a required field is
  * missing or invalid.
+ *
+ * `fixedDealType`, when given, is the deal type, and the submitted
+ * `dealType` is not read at all.
  */
-function readDealTerms(read: FieldReader, formData: FormData): DealTerms | null {
+function readDealTerms(
+  read: FieldReader,
+  formData: FormData,
+  fixedDealType?: DealType,
+): DealTerms | null {
   const name = read.requiredName('name', 'a deal name')
 
-  const dealType = formData.get('dealType')
+  const dealType = fixedDealType ?? formData.get('dealType')
   if (!isDealType(dealType)) read.errorFor('dealType', 'Choose a deal type.')
 
   const stage = formData.get('stage')
@@ -363,6 +371,31 @@ export function parseDealUpdateForm(
   }
 
   return { ok: true, value: terms }
+}
+
+/**
+ * A renewal as its form describes it: everything but its account and
+ * predecessor, which come from the predecessor deal itself.
+ */
+export type RenewalTerms = Omit<CreateRenewalDealInput, 'account_id' | 'predecessor_deal_id'>
+
+/**
+ * Parses the renewal form into the renewal's terms, always of type `renewal`.
+ *
+ * A renewal belongs to its predecessor's account (U13), so anything submitted
+ * as `dealType`, `accountId` or `predecessorDealId` is ignored here; the
+ * Server Action takes the predecessor from its own id and the account from
+ * the stored predecessor.
+ */
+export function parseRenewalForm(formData: FormData): FormResult<RenewalTerms> {
+  const read = new FieldReader(formData)
+  const terms = readDealTerms(read, formData, 'renewal')
+
+  if (Object.keys(read.errors).length > 0 || terms === null) {
+    return { ok: false, fieldErrors: read.errors }
+  }
+
+  return { ok: true, value: { ...terms, deal_type: 'renewal' } }
 }
 
 /** Whether a value is a uuid, the shape of every record id. */

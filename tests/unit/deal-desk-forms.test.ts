@@ -5,6 +5,7 @@ import {
   parseAccountForm,
   parseDealForm,
   parseDealUpdateForm,
+  parseRenewalForm,
   toAccountFormValues,
   toDealFormValues,
 } from '../../app/lib/deal-desk/forms'
@@ -324,6 +325,59 @@ describe('parseDealUpdateForm', () => {
     })
 
     expect(result.ok && result.value.deal_type).toBe('renewal')
+  })
+})
+
+describe('parseRenewalForm', () => {
+  const VALID_RENEWAL = { name: 'Acme 2028', stage: 'discovery', arrEur: '66000' }
+
+  it('reads the terms as a renewal, never the submitted type, account or predecessor', () => {
+    const result = parseRenewalForm(
+      form({
+        ...VALID_RENEWAL,
+        renewalDate: '2028-03-31',
+        dealType: 'new_business',
+        accountId: ACCOUNT_ID,
+        predecessorDealId: PREDECESSOR_ID,
+        user_id: 'someone-else',
+      }),
+    )
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        name: 'Acme 2028',
+        deal_type: 'renewal',
+        stage: 'discovery',
+        arr_eur: 66000,
+        tcv_eur: null,
+        list_price_eur: null,
+        discount_pct: null,
+        term_months: null,
+        start_date: null,
+        end_date: null,
+        renewal_date: '2028-03-31',
+        notice_period_days: null,
+        auto_renew: null,
+      },
+    })
+  })
+
+  it('does not ask for a deal type', () => {
+    const result = parseRenewalForm(form(VALID_RENEWAL))
+
+    expect(result.ok).toBe(true)
+  })
+
+  it('applies the same field rules as creating a deal', () => {
+    const result = parseRenewalForm(
+      form({ ...VALID_RENEWAL, name: '', arrEur: '-1', stage: 'won' }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && Object.keys(result.fieldErrors).sort()).toEqual(
+      ['arrEur', 'name', 'stage'].sort(),
+    )
   })
 })
 
