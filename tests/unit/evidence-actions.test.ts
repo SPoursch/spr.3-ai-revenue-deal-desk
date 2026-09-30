@@ -1,3 +1,5 @@
+import { inspect } from 'node:util'
+
 import { PostgrestError } from '@supabase/supabase-js'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -70,6 +72,23 @@ function dbError(table: 'evidence_items' | 'evidence_excerpts', code: string) {
     table,
     new PostgrestError({ message: RAW_DB_TEXT, details: 'internal detail', hint: '', code }),
   )
+}
+
+/**
+ * Asserts the server log carries only metadata: the SQLSTATE code, never the
+ * Postgres message or details, which can quote the submitted evidence.
+ */
+function expectSafeLog() {
+  expect(consoleError).toHaveBeenCalled()
+  // inspect, not JSON.stringify: it shows an Error's message and nested
+  // cause as a real log line would.
+  const logged = consoleError.mock.calls
+    .flat()
+    .map((arg: unknown) => inspect(arg, { depth: 5 }))
+    .join('\n')
+  expect(logged).toContain('23514')
+  expect(logged).not.toContain(RAW_DB_TEXT)
+  expect(logged).not.toContain('internal detail')
 }
 
 let consoleError: ReturnType<typeof vi.spyOn>
@@ -185,7 +204,7 @@ describe('createEvidenceAction', () => {
     expect(result.values).toMatchObject({ title: 'Order form 2027' })
     expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
     expect(db.createEvidenceExcerpt).not.toHaveBeenCalled()
-    expect(consoleError).toHaveBeenCalled()
+    expectSafeLog()
   })
 
   it('answers "not found" when the deal became unavailable before the insert', async () => {
@@ -218,7 +237,7 @@ describe('createEvidenceAction', () => {
     expect(result.values).toEqual({})
     expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
     expect(navigation.redirect).not.toHaveBeenCalled()
-    expect(consoleError).toHaveBeenCalled()
+    expectSafeLog()
     // The deal page now lists the item, so it is refreshed.
     expect(cache.revalidatePath).toHaveBeenCalledWith(`/workspace/deals/${DEAL_ID}`)
   })

@@ -41,6 +41,24 @@ const EXCERPTS_FAILED_MESSAGE =
   'the deal; do not add it again.'
 
 /**
+ * What the server log records about a failure: metadata only. A Postgres
+ * error's message and details can quote the rejected row, which here is the
+ * submitted evidence text, so neither the error nor its message is logged.
+ */
+function safeErrorMetadata(error: unknown) {
+  if (error instanceof DealDeskDatabaseError) {
+    return {
+      operation: error.operation,
+      table: error.table,
+      kind: error.kind,
+      code: error.cause.code,
+    }
+  }
+
+  return { kind: 'unexpected', name: error instanceof Error ? error.name : typeof error }
+}
+
+/**
  * Adds pasted evidence to one of the caller's deals, splits it into paragraph
  * excerpts, then opens it.
  *
@@ -82,7 +100,7 @@ export async function createEvidenceAction(
     item = await createEvidenceItem({ ...parsed.value, deal_id: deal.id })
   } catch (error) {
     if (error instanceof DealDeskDatabaseError && error.kind === 'invalid_input') {
-      console.error('[evidence] item insert rejected:', error.message)
+      console.error('[evidence] item insert rejected', safeErrorMetadata(error))
 
       return failure(INPUT_REJECTED_MESSAGE, {}, values)
     }
@@ -90,12 +108,12 @@ export async function createEvidenceAction(
     // RLS refuses an insert on a deal that is not the caller's, e.g. one
     // deleted since it was read.
     if (error instanceof DealDeskDatabaseError && error.kind === 'not_permitted') {
-      console.error('[evidence] item insert refused:', error.message)
+      console.error('[evidence] item insert refused', safeErrorMetadata(error))
 
       return failure(DEAL_NOT_FOUND_MESSAGE, {}, values)
     }
 
-    console.error('[evidence] item insert failed:', error)
+    console.error('[evidence] item insert failed', safeErrorMetadata(error))
 
     return failure(CREATE_FAILED_MESSAGE, {}, values)
   }
@@ -112,7 +130,10 @@ export async function createEvidenceAction(
       })
     }
   } catch (error) {
-    console.error(`[evidence] excerpt insert failed for item ${item.id}:`, error)
+    console.error('[evidence] excerpt insert failed', {
+      itemId: item.id,
+      ...safeErrorMetadata(error),
+    })
 
     // The item exists and is listed on the deal. The form is not re-filled,
     // so submitting again does not add it a second time.

@@ -451,6 +451,15 @@ describe('parseEvidenceForm', () => {
     expect(parseEvidenceForm(form({ ...VALID_EVIDENCE, title: 'x'.repeat(300) })).ok).toBe(true)
   })
 
+  it('caps the text at 500 paragraphs, however short they are', () => {
+    const paragraphs = (count: number) => Array(count).fill('p').join('\r\n\r\n')
+
+    const result = parseEvidenceForm(form({ ...VALID_EVIDENCE, bodyText: paragraphs(501) }))
+
+    expect(!result.ok && result.fieldErrors.bodyText).toMatch(/500 paragraphs/)
+    expect(parseEvidenceForm(form({ ...VALID_EVIDENCE, bodyText: paragraphs(500) })).ok).toBe(true)
+  })
+
   it('never reads the deal, the owner or the source kind from the form', () => {
     const result = parseEvidenceForm(
       form({

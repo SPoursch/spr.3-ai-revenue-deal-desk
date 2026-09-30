@@ -12,6 +12,7 @@ import {
   type DealType,
   type UpdateDealInput,
 } from './domain'
+import { splitIntoParagraphs } from './excerpts'
 
 /**
  * Server-side parsing of the Deal Records forms.
@@ -101,6 +102,12 @@ const MAX_EVIDENCE_TITLE_LENGTH = 300
  * default), so a long document gets a field message, not a failed request.
  */
 const MAX_EVIDENCE_BODY_LENGTH = 100_000
+/**
+ * Each paragraph becomes one excerpt, stored with one insert, so the count is
+ * capped: 100,000 characters of one-letter paragraphs would otherwise be
+ * tens of thousands of inserts in a single request.
+ */
+const MAX_EVIDENCE_PARAGRAPHS = 500
 const MAX_TEXT_LENGTH = 200
 
 /** `numeric(14,2)`: up to 12 whole digits and 2 decimals, never negative. */
@@ -437,6 +444,11 @@ export function parseEvidenceForm(formData: FormData): FormResult<EvidenceTerms>
     read.errorFor(
       'bodyText',
       `Keep the text to ${MAX_EVIDENCE_BODY_LENGTH.toLocaleString('en-GB')} characters or fewer.`,
+    )
+  } else if (splitIntoParagraphs(bodyText).length > MAX_EVIDENCE_PARAGRAPHS) {
+    read.errorFor(
+      'bodyText',
+      `Keep the text to ${MAX_EVIDENCE_PARAGRAPHS} paragraphs or fewer.`,
     )
   }
 
