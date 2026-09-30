@@ -489,6 +489,26 @@ export type CreateProvisionExcerptInput = Pick<
   'provision_id' | 'excerpt_id' | 'deal_id'
 >
 
+/**
+ * A citation as the provision page shows it: the cited excerpt with the id
+ * and title of its evidence item. Never the item's full text.
+ */
+export type ProvisionCitation = {
+  excerpt_id: EvidenceExcerptId
+  created_at: string
+  excerpt: Pick<EvidenceExcerpt, 'id' | 'ordinal' | 'content' | 'evidence_item_id'> & {
+    evidence_item: Pick<EvidenceItem, 'id' | 'title'>
+  }
+}
+
+/**
+ * One evidence item of a deal with its excerpts, for choosing what a
+ * provision cites. Never the item's full text.
+ */
+export type DealExcerptGroup = Pick<EvidenceItem, 'id' | 'title' | 'evidence_type'> & {
+  excerpts: Pick<EvidenceExcerpt, 'id' | 'ordinal' | 'content'>[]
+}
+
 // ---------------------------------------------------------------------------
 // AI findings
 //

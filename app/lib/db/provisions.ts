@@ -8,6 +8,7 @@ import {
   type DealId,
   type EvidenceExcerptId,
   type Provision,
+  type ProvisionCitation,
   type ProvisionExcerpt,
   type ProvisionId,
   type UpdateProvisionInput,
@@ -277,4 +278,71 @@ export async function removeProvisionExcerpt(
   }
 
   return data.length > 0
+}
+
+/**
+ * Cites several excerpts in one insert statement and returns the stored
+ * links. One statement is atomic: a batch with a repeated pair or an excerpt
+ * of another deal is rejected whole (`invalid_input`), and one on a deal that
+ * is not the caller's is refused (`not_permitted`). An empty batch stores
+ * nothing and sends no request.
+ */
+export async function addProvisionExcerpts(
+  inputs: CreateProvisionExcerptInput[],
+): Promise<ProvisionExcerpt[]> {
+  if (inputs.length === 0) return []
+
+  const { data, error } = await getSupabaseClient()
+    .from(PROVISION_EXCERPTS_TABLE)
+    .insert(
+      inputs.map((input) => ({
+        provision_id: input.provision_id,
+        excerpt_id: input.excerpt_id,
+        deal_id: input.deal_id,
+      })),
+    )
+    .select(PROVISION_EXCERPT_COLUMNS)
+
+  if (error) {
+    throw new DealDeskDatabaseError('insert', PROVISION_EXCERPTS_TABLE, error)
+  }
+
+  return data
+}
+
+/**
+ * A citation with its excerpt and the excerpt's item (id and title only). Each
+ * embed names its composite foreign key, so the join is never ambiguous.
+ */
+const PROVISION_CITATION_COLUMNS =
+  'excerpt_id, created_at, excerpt:evidence_excerpts!provision_excerpts_excerpt_fkey(id, ordinal, content, evidence_item_id, evidence_item:evidence_items!evidence_excerpts_evidence_item_fkey(id, title))'
+
+/**
+ * The cited excerpts of one provision with their evidence item's id and
+ * title, oldest link first. Row level security applies to every table read,
+ * so a provision with no citations, or one that is not the caller's, yields
+ * an empty list.
+ */
+export async function listProvisionCitations(
+  provisionId: ProvisionId,
+): Promise<ProvisionCitation[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(PROVISION_EXCERPTS_TABLE)
+    .select(PROVISION_CITATION_COLUMNS)
+    .eq('provision_id', provisionId)
+    .order('created_at', { ascending: true })
+    .order('excerpt_id', { ascending: true })
+
+  if (error) {
+    throw new DealDeskDatabaseError('select', PROVISION_EXCERPTS_TABLE, error)
+  }
+
+  return data.map(({ excerpt_id, created_at, excerpt }) => {
+    // Both foreign keys are not null and same-deal, so a missing embed means
+    // the schema changed; surface it rather than render a broken citation.
+    if (!excerpt || !excerpt.evidence_item) {
+      throw new Error(`Citation of excerpt ${excerpt_id} came back without its excerpt or item.`)
+    }
+    return { excerpt_id, created_at, excerpt }
+  })
 }

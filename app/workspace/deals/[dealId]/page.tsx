@@ -13,6 +13,7 @@ import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
   EVIDENCE_TYPE_LABELS,
+  PROVISION_TYPE_LABELS,
   formatBoolean,
   formatDate,
   formatEur,
@@ -25,6 +26,8 @@ import {
   getDeal,
   listDeals,
   listEvidenceItems,
+  listProvisionExcerpts,
+  listProvisions,
 } from '@/app/lib/db'
 
 /**
@@ -67,11 +70,20 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
 
   // A failed read goes to the workspace error page, so an evidence list that
   // could not be loaded never looks like "No evidence yet".
-  const [account, predecessor, renewals, evidence] = await Promise.all([
+  const [account, predecessor, renewals, evidence, provisions] = await Promise.all([
     getAccount(deal.account_id),
     deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
     listDeals().then((deals) => deals.filter((d) => d.predecessor_deal_id === deal.id)),
     listEvidenceItems(deal.id),
+    // At most one provision per type, so at most seven citation reads.
+    listProvisions(deal.id).then((list) =>
+      Promise.all(
+        list.map(async (provision) => ({
+          provision,
+          citationCount: (await listProvisionExcerpts(provision.id)).length,
+        })),
+      ),
+    ),
   ])
 
   const details: [string, string][] = [
@@ -145,6 +157,44 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
           </ul>
         </section>
       ) : null}
+
+      <section aria-label="Provisions" className="mt-8">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="text-[20px] font-bold tracking-tight">Provisions</h2>
+          <Link
+            href={`/workspace/deals/${deal.id}/provisions/new`}
+            className={SECONDARY_LINK_CLASS}
+          >
+            Add provision
+          </Link>
+        </div>
+        {provisions.length === 0 ? (
+          <p className="mt-3 text-[15px] text-muted">
+            No provisions yet. Record the contract terms of this deal and cite the evidence
+            behind them.
+          </p>
+        ) : (
+          <ul className={`${CARD_CLASS} mt-3 divide-y divide-border`}>
+            {provisions.map(({ provision, citationCount }) => (
+              <li
+                key={provision.id}
+                className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-6 py-4"
+              >
+                <Link
+                  href={`/workspace/deals/${deal.id}/provisions/${provision.id}`}
+                  className={`${TEXT_LINK_CLASS} text-[15px]`}
+                >
+                  {PROVISION_TYPE_LABELS[provision.provision_type]}
+                </Link>
+                <span className="text-[15px]">{provision.value_text}</span>
+                <span className="text-[14px] text-muted">
+                  {citationCount > 0 ? 'Supported' : 'Unsupported'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section aria-label="Evidence" className="mt-8">
         <div className="flex flex-wrap items-center justify-between gap-4">
