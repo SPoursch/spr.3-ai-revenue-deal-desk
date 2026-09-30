@@ -45,6 +45,7 @@ const MSA_TITLE = `${RUN_PREFIX} Order form 2027`
 const NOTE_TITLE = `${RUN_PREFIX} Call note residency`
 const TAMPER_A_TITLE = `${RUN_PREFIX} Tampered by A`
 const TAMPER_B_TITLE = `${RUN_PREFIX} Tampered by B`
+const ORPHAN_TITLE = `${RUN_PREFIX} Excerpts failed`
 
 /**
  * Three paragraphs, with every case the splitter must handle: leading and
@@ -490,6 +491,46 @@ test.describe.serial('evidence and excerpts', () => {
     // Nor can B read it directly under RLS.
     expect(await readItem(userB, msaId)).toBeNull()
     expect(await readExcerpts(userB, msaId)).toEqual([])
+  })
+
+  test('evidence whose excerpts failed says so and can have them created once', async ({
+    page,
+  }) => {
+    const { dealId } = fixtures.dealA
+    // The state a failed excerpt insert leaves: the item stored, no excerpts.
+    const inserted = await userA.client
+      .from('evidence_items')
+      .insert({
+        deal_id: dealId,
+        evidence_type: 'order_form',
+        title: ORPHAN_TITLE,
+        source_kind: 'pasted',
+        body_text: MULTI_PARAGRAPH_BODY,
+      })
+      .select('id')
+      .single()
+    if (inserted.error) throw new Error(`E2E setup: evidence insert failed (${inserted.error.code}).`)
+    const itemId = inserted.data.id
+    await signIn(page, 'A')
+
+    await page.goto(`/workspace/deals/${dealId}/evidence/${itemId}`)
+    const region = page.getByRole('region', { name: 'Excerpts' })
+    await expect(region).toContainText(/creating the excerpts of this evidence failed/i)
+    await expect(region).not.toContainText('This evidence has no excerpts.')
+
+    const answered = page.waitForResponse((response) => response.request().method() === 'POST')
+    await region.getByRole('button', { name: 'Create excerpts' }).click()
+    await answered
+
+    await expect(region.getByRole('listitem')).toHaveCount(EXPECTED_PARAGRAPHS.length)
+    await expect(region).not.toContainText(/failed/i)
+    await expect(region.getByRole('button', { name: 'Create excerpts' })).toHaveCount(0)
+
+    // Created from the stored body, faithfully, on the item's deal.
+    const item = await readItem(userA, itemId)
+    const excerpts = await readExcerpts(userA, itemId)
+    expect(excerpts.every((excerpt) => excerpt.deal_id === dealId)).toBe(true)
+    expectFaithfulExcerpts(item!.body_text, excerpts, EXPECTED_PARAGRAPHS)
   })
 
   test("user B cannot redirect a submission onto user A's deal", async ({ page }) => {

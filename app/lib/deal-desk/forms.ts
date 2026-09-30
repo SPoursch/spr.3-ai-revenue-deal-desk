@@ -101,13 +101,13 @@ const MAX_EVIDENCE_TITLE_LENGTH = 300
  * Pasted evidence is capped well below the Server Action body limit (1 MB by
  * default), so a long document gets a field message, not a failed request.
  */
-const MAX_EVIDENCE_BODY_LENGTH = 100_000
+export const MAX_EVIDENCE_BODY_LENGTH = 100_000
 /**
  * Each paragraph becomes one excerpt, stored with one insert, so the count is
  * capped: 100,000 characters of one-letter paragraphs would otherwise be
  * tens of thousands of inserts in a single request.
  */
-const MAX_EVIDENCE_PARAGRAPHS = 500
+export const MAX_EVIDENCE_PARAGRAPHS = 500
 const MAX_TEXT_LENGTH = 200
 
 /** `numeric(14,2)`: up to 12 whole digits and 2 decimals, never negative. */

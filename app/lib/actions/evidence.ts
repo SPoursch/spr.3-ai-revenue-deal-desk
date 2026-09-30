@@ -8,6 +8,8 @@ import { splitIntoParagraphs } from '../deal-desk/excerpts'
 import {
   EVIDENCE_FORM_FIELDS,
   isUuid,
+  MAX_EVIDENCE_BODY_LENGTH,
+  MAX_EVIDENCE_PARAGRAPHS,
   parseEvidenceForm,
   readFormValues,
 } from '../deal-desk/forms'
@@ -16,6 +18,8 @@ import {
   createEvidenceItem,
   DealDeskDatabaseError,
   getDeal,
+  getEvidenceItem,
+  listEvidenceExcerpts,
 } from '../db'
 import { failure, type DealDeskActionState } from './deal-desk-action-state'
 import { requireUser } from './require-auth'
@@ -39,6 +43,10 @@ const CREATE_FAILED_MESSAGE = 'Could not add the evidence. Please try again.'
 const EXCERPTS_FAILED_MESSAGE =
   'The evidence was saved, but its excerpts could not all be created. It is listed on ' +
   'the deal; do not add it again.'
+const EVIDENCE_NOT_FOUND_MESSAGE = 'This evidence no longer exists, or it is not one of yours.'
+const EXCERPTS_EXIST_MESSAGE = 'This evidence already has its excerpts.'
+const NOT_SPLITTABLE_MESSAGE = 'This evidence cannot be split into excerpts.'
+const RECREATE_FAILED_MESSAGE = 'The excerpts could not be created. Please try again.'
 
 /**
  * What the server log records about a failure: metadata only. A Postgres
@@ -147,4 +155,84 @@ export async function createEvidenceAction(
 
   // Outside the try blocks: redirect() works by throwing.
   redirect(`${dealPath}/evidence/${item.id}`)
+}
+
+/**
+ * Creates the excerpts of an evidence item whose excerpt insert failed when it
+ * was added (see `createEvidenceAction`), from its stored body.
+ *
+ * Recovery only, not an edit: it runs only while the item has no excerpts, and
+ * never deletes or replaces any. The item is read as the caller, so row level
+ * security decides whether it is on one of their deals, and the excerpts take
+ * its id, deal and body. Nothing but the item id is read from the form. A
+ * repeated or concurrent attempt cannot duplicate excerpts: the database keeps
+ * one excerpt per item and ordinal.
+ */
+export async function recreateEvidenceExcerptsAction(
+  _state: DealDeskActionState,
+  formData: FormData,
+): Promise<DealDeskActionState> {
+  if (await requireUser()) {
+    return failure(SIGNED_OUT_MESSAGE)
+  }
+
+  const evidenceId = formData.get('evidenceId')
+
+  if (!isUuid(evidenceId)) {
+    return failure(EVIDENCE_NOT_FOUND_MESSAGE)
+  }
+
+  let item: EvidenceItem
+
+  try {
+    const found = await getEvidenceItem(evidenceId)
+
+    if (!found) {
+      return failure(EVIDENCE_NOT_FOUND_MESSAGE)
+    }
+
+    if ((await listEvidenceExcerpts(found.id)).length > 0) {
+      return failure(EXCERPTS_EXIST_MESSAGE)
+    }
+
+    item = found
+  } catch (error) {
+    console.error('[evidence] excerpt recovery read failed', safeErrorMetadata(error))
+
+    return failure(RECREATE_FAILED_MESSAGE)
+  }
+
+  // The same limits as when evidence is added.
+  const paragraphs = splitIntoParagraphs(item.body_text)
+
+  if (
+    item.body_text.length > MAX_EVIDENCE_BODY_LENGTH ||
+    paragraphs.length === 0 ||
+    paragraphs.length > MAX_EVIDENCE_PARAGRAPHS
+  ) {
+    return failure(NOT_SPLITTABLE_MESSAGE)
+  }
+
+  const itemPath = `${WORKSPACE_PATH}/deals/${item.deal_id}/evidence/${item.id}`
+
+  try {
+    await createEvidenceExcerpts(
+      paragraphs.map((excerpt) => ({
+        ...excerpt,
+        evidence_item_id: item.id,
+        deal_id: item.deal_id,
+      })),
+    )
+  } catch (error) {
+    console.error('[evidence] excerpt recovery insert failed', {
+      itemId: item.id,
+      ...safeErrorMetadata(error),
+    })
+
+    return failure(RECREATE_FAILED_MESSAGE)
+  }
+
+  revalidatePath(itemPath)
+
+  redirect(itemPath)
 }

@@ -23,6 +23,8 @@ const db = vi.hoisted(() => ({
   createEvidenceExcerpts: vi.fn(),
   createEvidenceItem: vi.fn(),
   getDeal: vi.fn(),
+  getEvidenceItem: vi.fn(),
+  listEvidenceExcerpts: vi.fn(),
 }))
 
 const guard = vi.hoisted(() => ({ requireUser: vi.fn() }))
@@ -43,7 +45,10 @@ vi.mock('../../app/lib/actions/require-auth', () => guard)
 vi.mock('next/navigation', () => navigation)
 vi.mock('next/cache', () => cache)
 
-import { createEvidenceAction } from '../../app/lib/actions/evidence'
+import {
+  createEvidenceAction,
+  recreateEvidenceExcerptsAction,
+} from '../../app/lib/actions/evidence'
 import { initialDealDeskActionState } from '../../app/lib/actions/deal-desk-action-state'
 
 const DEAL_ID = '33333333-3333-4333-8333-333333333333'
@@ -105,6 +110,8 @@ beforeEach(() => {
   db.createEvidenceExcerpts.mockImplementation(async (inputs: object[]) =>
     inputs.map((input) => ({ ...input, id: 'x' })),
   )
+  db.getEvidenceItem.mockResolvedValue({ id: ITEM_ID, deal_id: DEAL_ID, body_text: BODY })
+  db.listEvidenceExcerpts.mockResolvedValue([])
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -244,5 +251,118 @@ describe('createEvidenceAction', () => {
     expectSafeLog()
     // The deal page now lists the item, so it is refreshed.
     expect(cache.revalidatePath).toHaveBeenCalledWith(`/workspace/deals/${DEAL_ID}`)
+  })
+})
+
+describe('recreateEvidenceExcerptsAction', () => {
+  const ITEM_PATH = `/workspace/deals/${DEAL_ID}/evidence/${ITEM_ID}`
+
+  it('refuses a signed-out caller before reading or writing', async () => {
+    guard.requireUser.mockResolvedValue({ ok: false, message: 'x', at: 1 })
+
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: ITEM_ID }),
+    )
+
+    expect(result.message).toMatch(/signed in/i)
+    expect(db.getEvidenceItem).not.toHaveBeenCalled()
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
+  })
+
+  it("re-creates the excerpts of an owned item with none, from the stored body, in one insert", async () => {
+    await expect(
+      recreateEvidenceExcerptsAction(
+        initialDealDeskActionState,
+        form({
+          evidenceId: ITEM_ID,
+          // Client-supplied content and ownership are ignored.
+          bodyText: 'Injected paragraph.',
+          deal_id: OTHER_DEAL_ID,
+          user_id: 'someone-else',
+        }),
+      ),
+    ).rejects.toThrow(`NEXT_REDIRECT ${ITEM_PATH}`)
+
+    expect(db.getEvidenceItem).toHaveBeenCalledWith(ITEM_ID)
+    expect(db.listEvidenceExcerpts).toHaveBeenCalledWith(ITEM_ID)
+    expect(db.createEvidenceExcerpts).toHaveBeenCalledTimes(1)
+    const excerpts = db.createEvidenceExcerpts.mock.calls[0][0]
+    expect(excerpts.map((excerpt: { content: string }) => excerpt.content)).toEqual([
+      'Term: 12 months.',
+      'Fees: EUR 60,000.',
+    ])
+    for (const excerpt of excerpts) {
+      expect(excerpt).toMatchObject({ evidence_item_id: ITEM_ID, deal_id: DEAL_ID })
+      expect(excerpt).not.toHaveProperty('user_id')
+    }
+    expect(cache.revalidatePath).toHaveBeenCalledWith(ITEM_PATH)
+  })
+
+  it('refuses an item that already has excerpts, without writing', async () => {
+    db.listEvidenceExcerpts.mockResolvedValue([{ id: 'x', ordinal: 0 }])
+
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: ITEM_ID }),
+    )
+
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/already has its excerpts/i)
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
+  })
+
+  it("answers \"not found\" for an item on another user's deal, without writing", async () => {
+    // Row level security hides another user's evidence: the read is null.
+    db.getEvidenceItem.mockResolvedValue(null)
+
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: ITEM_ID }),
+    )
+
+    expect(result.message).toMatch(/no longer exists, or it is not one of yours/i)
+    expect(db.listEvidenceExcerpts).not.toHaveBeenCalled()
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
+  })
+
+  it('refuses an id that is not a uuid without touching the database', async () => {
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: 'x' }),
+    )
+
+    expect(result.message).toMatch(/no longer exists, or it is not one of yours/i)
+    expect(db.getEvidenceItem).not.toHaveBeenCalled()
+  })
+
+  it('refuses a stored body over the paragraph cap, without writing', async () => {
+    db.getEvidenceItem.mockResolvedValue({
+      id: ITEM_ID,
+      deal_id: DEAL_ID,
+      body_text: Array.from({ length: 501 }, () => 'x').join('\n\n'),
+    })
+
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: ITEM_ID }),
+    )
+
+    expect(result.message).toMatch(/cannot be split into excerpts/i)
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
+  })
+
+  it('logs only metadata and shows a generic message when the insert fails again', async () => {
+    db.createEvidenceExcerpts.mockRejectedValue(dbError('evidence_excerpts', '23514'))
+
+    const result = await recreateEvidenceExcerptsAction(
+      initialDealDeskActionState,
+      form({ evidenceId: ITEM_ID }),
+    )
+
+    expect(result.message).toMatch(/could not be created/i)
+    expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
+    expect(navigation.redirect).not.toHaveBeenCalled()
+    expectSafeLog()
   })
 })
