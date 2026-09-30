@@ -10,16 +10,17 @@ import { DealDeskDatabaseError } from '../../app/lib/db/errors'
  *
  * It must authorise first, validate on the server, take the deal from a read
  * as the caller (never from the form), store the item as pasted, then store
- * one excerpt per paragraph of the stored body. If the excerpts fail after
- * the item was stored, it says so rather than claiming success: evidence
- * cannot be deleted (E3), so there is nothing to roll back.
+ * one excerpt per paragraph of the stored body, all in one batched insert.
+ * If the excerpts fail after the item was stored, it says so rather than
+ * claiming success: evidence cannot be deleted (E3), so there is nothing to
+ * roll back.
  *
  * The auth guard, the data layer and Next's navigation are stubs; the action,
  * the form parsing and the paragraph splitter are the real ones.
  */
 
 const db = vi.hoisted(() => ({
-  createEvidenceExcerpt: vi.fn(),
+  createEvidenceExcerpts: vi.fn(),
   createEvidenceItem: vi.fn(),
   getDeal: vi.fn(),
 }))
@@ -101,7 +102,9 @@ beforeEach(() => {
     id: ITEM_ID,
     source_kind: 'pasted',
   }))
-  db.createEvidenceExcerpt.mockImplementation(async (input) => ({ ...input, id: 'x' }))
+  db.createEvidenceExcerpts.mockImplementation(async (inputs: object[]) =>
+    inputs.map((input) => ({ ...input, id: 'x' })),
+  )
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -152,7 +155,7 @@ describe('createEvidenceAction', () => {
     expect(db.createEvidenceItem).not.toHaveBeenCalled()
   })
 
-  it('stores the item on the verified deal and one excerpt per paragraph, then opens it', async () => {
+  it('stores the item on the verified deal and one excerpt per paragraph in a single insert, then opens it', async () => {
     await expect(
       createEvidenceAction(
         initialDealDeskActionState,
@@ -174,7 +177,8 @@ describe('createEvidenceAction', () => {
     })
     for (const key of ['user_id', 'source_kind']) expect(item).not.toHaveProperty(key)
 
-    expect(db.createEvidenceExcerpt.mock.calls.map(([input]) => input)).toEqual([
+    expect(db.createEvidenceExcerpts).toHaveBeenCalledTimes(1)
+    expect(db.createEvidenceExcerpts.mock.calls[0][0]).toEqual([
       {
         evidence_item_id: ITEM_ID,
         deal_id: DEAL_ID,
@@ -203,7 +207,7 @@ describe('createEvidenceAction', () => {
     expect(result.message).toMatch(/could not be saved with these details/i)
     expect(result.values).toMatchObject({ title: 'Order form 2027' })
     expect(JSON.stringify(result)).not.toContain(RAW_DB_TEXT)
-    expect(db.createEvidenceExcerpt).not.toHaveBeenCalled()
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
     expectSafeLog()
   })
 
@@ -213,7 +217,7 @@ describe('createEvidenceAction', () => {
     const result = await createEvidenceAction(initialDealDeskActionState, form(VALID_EVIDENCE))
 
     expect(result.message).toMatch(NOT_YOURS)
-    expect(db.createEvidenceExcerpt).not.toHaveBeenCalled()
+    expect(db.createEvidenceExcerpts).not.toHaveBeenCalled()
   })
 
   it('shows a generic message for an unexpected item failure and logs it', async () => {
@@ -227,7 +231,7 @@ describe('createEvidenceAction', () => {
   })
 
   it('does not claim success when the excerpts fail after the item was saved', async () => {
-    db.createEvidenceExcerpt.mockRejectedValue(dbError('evidence_excerpts', '23514'))
+    db.createEvidenceExcerpts.mockRejectedValue(dbError('evidence_excerpts', '23514'))
 
     const result = await createEvidenceAction(initialDealDeskActionState, form(VALID_EVIDENCE))
 

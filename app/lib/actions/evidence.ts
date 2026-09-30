@@ -12,7 +12,7 @@ import {
   readFormValues,
 } from '../deal-desk/forms'
 import {
-  createEvidenceExcerpt,
+  createEvidenceExcerpts,
   createEvidenceItem,
   DealDeskDatabaseError,
   getDeal,
@@ -121,14 +121,15 @@ export async function createEvidenceAction(
   const dealPath = `${WORKSPACE_PATH}/deals/${item.deal_id}`
 
   try {
-    // Split the stored body, so every offset points into what was saved.
-    for (const excerpt of splitIntoParagraphs(item.body_text)) {
-      await createEvidenceExcerpt({
+    // Split the stored body, so every offset points into what was saved. One
+    // insert for all excerpts: it stores every one or none.
+    await createEvidenceExcerpts(
+      splitIntoParagraphs(item.body_text).map((excerpt) => ({
         ...excerpt,
         evidence_item_id: item.id,
         deal_id: item.deal_id,
-      })
-    }
+      })),
+    )
   } catch (error) {
     console.error('[evidence] excerpt insert failed', {
       itemId: item.id,
