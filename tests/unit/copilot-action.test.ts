@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * The one Server Action behind the deal page's question box. Its order is the
  * Index's: sign-in check → input validation → reads as the caller → retrieval
  * → one model call over exactly those sources → validation → one `answer`
- * finding and its excerpt citations. The data layer and the provider are
+ * finding and its excerpt citations, stored together in one atomic call
+ * (createCopilotAnswer) so a failure leaves no answer without its evidence. The data layer and the provider are
  * replaced here; the pure core (app/lib/deal-desk/copilot.ts) and the runner
  * (app/lib/ai/copilot.ts) are real.
  *
@@ -21,9 +22,11 @@ const db = vi.hoisted(() => ({
   listExceptions: vi.fn(),
   listRulePrecedents: vi.fn(),
   retrieveDealExcerpts: vi.fn(),
+  createCopilotAnswer: vi.fn(),
+  // Never to be called by the Copilot. The two separate answer writes are
+  // here too: the answer and its citations are stored only together.
   createAiFinding: vi.fn(),
   addAiFindingExcerpts: vi.fn(),
-  // Never to be called by the Copilot.
   recordDecision: vi.fn(),
   createException: vi.fn(),
   updateExceptionStatus: vi.fn(),
@@ -126,6 +129,8 @@ function ask(fields: Record<string, string> = { dealId: DEAL_ID, question: QUEST
 
 function expectNoMutationBeyondTheAnswer() {
   for (const fn of [
+    db.createAiFinding,
+    db.addAiFindingExcerpts,
     db.recordDecision,
     db.createException,
     db.updateExceptionStatus,
@@ -135,6 +140,15 @@ function expectNoMutationBeyondTheAnswer() {
   ]) {
     expect(fn).not.toHaveBeenCalled()
   }
+}
+
+/** A citation insert refused by the database (another deal's excerpt). */
+function citationRejected() {
+  return new DealDeskDatabaseError(
+    'create_copilot_answer',
+    'ai_findings',
+    new PostgrestError({ message: 'fk', details: '', hint: '', code: '23503' }),
+  )
 }
 
 let errorLog: ReturnType<typeof vi.spyOn>
@@ -149,8 +163,9 @@ beforeEach(() => {
   db.listExceptions.mockResolvedValue([])
   db.listRulePrecedents.mockResolvedValue([])
   db.retrieveDealExcerpts.mockResolvedValue({ mode: 'all', excerpts: [retrieved] })
-  db.createAiFinding.mockImplementation(async (input: object) => ({
+  db.createCopilotAnswer.mockImplementation(async (input: object) => ({
     id: FINDING_ID,
+    finding_type: 'answer',
     status: 'proposed',
     created_at: '2026-10-01T10:00:00Z',
     rule_key: null,
@@ -158,7 +173,6 @@ beforeEach(() => {
     payload: null,
     ...input,
   }))
-  db.addAiFindingExcerpts.mockResolvedValue(undefined)
   errorLog = vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -206,7 +220,7 @@ describe('askCopilotAction: order and input', () => {
     expect(result.ok).toBe(false)
     expect(db.retrieveDealExcerpts).not.toHaveBeenCalled()
     expect(provider).not.toHaveBeenCalled()
-    expect(db.createAiFinding).not.toHaveBeenCalled()
+    expect(db.createCopilotAnswer).not.toHaveBeenCalled()
   })
 
   it('fails with the generic message when no provider is configured, storing nothing', async () => {
@@ -215,7 +229,7 @@ describe('askCopilotAction: order and input', () => {
     const result = await ask()
 
     expect(result).toMatchObject({ ok: false, message: COPILOT_ERROR_MESSAGE })
-    expect(db.createAiFinding).not.toHaveBeenCalled()
+    expect(db.createCopilotAnswer).not.toHaveBeenCalled()
   })
 })
 
@@ -241,11 +255,12 @@ describe('askCopilotAction: one answer', () => {
     const result = await ask()
 
     expect(result.ok).toBe(true)
-    expect(db.createAiFinding).toHaveBeenCalledTimes(1)
-    const [input] = db.createAiFinding.mock.calls[0]
+    expect(db.createCopilotAnswer).toHaveBeenCalledTimes(1)
+    // The finding type is fixed to 'answer' by the database function
+    // (tests/integration/copilot.test.ts checks the stored row).
+    const [input] = db.createCopilotAnswer.mock.calls[0]
     expect(input).toMatchObject({
       deal_id: DEAL_ID,
-      finding_type: 'answer',
       content: expect.stringMatching(/\S/),
       model: 'reported/model',
       prompt_version: COPILOT_PROMPT_VERSION,
@@ -256,13 +271,14 @@ describe('askCopilotAction: one answer', () => {
     expect(input).not.toHaveProperty('status')
   })
 
-  it('stores the excerpt citations in one call, only for retrieved excerpts, with the verbatim quote', async () => {
+  it('stores the excerpt citations with the answer in one call, only for retrieved excerpts, with the verbatim quote', async () => {
     await ask()
 
-    expect(db.addAiFindingExcerpts).toHaveBeenCalledTimes(1)
-    expect(db.addAiFindingExcerpts).toHaveBeenCalledWith(FINDING_ID, DEAL_ID, [
+    expect(db.createCopilotAnswer).toHaveBeenCalledTimes(1)
+    expect(db.createCopilotAnswer.mock.calls[0][1]).toEqual([
       { excerpt_id: EXCERPT_ID, quote: 'liability cap is 12 months' },
     ])
+    expect(db.addAiFindingExcerpts).not.toHaveBeenCalled()
   })
 
   it('stores no citation rows when the answer cites no excerpt', async () => {
@@ -270,7 +286,8 @@ describe('askCopilotAction: one answer', () => {
 
     await ask()
 
-    expect(db.addAiFindingExcerpts).not.toHaveBeenCalled()
+    expect(db.createCopilotAnswer).toHaveBeenCalledTimes(1)
+    expect(db.createCopilotAnswer.mock.calls[0][1]).toEqual([])
   })
 
   it('refreshes the deal page and reaches no other mutation', async () => {
@@ -288,7 +305,7 @@ describe('askCopilotAction: failures', () => {
     const result = await ask()
 
     expect(result).toMatchObject({ ok: false, message: COPILOT_ERROR_MESSAGE })
-    expect(db.createAiFinding).not.toHaveBeenCalled()
+    expect(db.createCopilotAnswer).not.toHaveBeenCalled()
   })
 
   it('stores nothing when the provider fails', async () => {
@@ -297,22 +314,30 @@ describe('askCopilotAction: failures', () => {
     const result = await ask()
 
     expect(result).toMatchObject({ ok: false, message: COPILOT_ERROR_MESSAGE })
-    expect(db.createAiFinding).not.toHaveBeenCalled()
+    expect(db.createCopilotAnswer).not.toHaveBeenCalled()
   })
 
   it('fails safe when the citations cannot be stored: generic message, no repair, no status change', async () => {
-    db.addAiFindingExcerpts.mockRejectedValue(
-      new DealDeskDatabaseError(
-        'insert',
-        'ai_finding_excerpts',
-        new PostgrestError({ message: 'fk', details: '', hint: '', code: '23503' }),
-      ),
-    )
+    // The atomic store rejects the whole answer, so no finding is left behind.
+    db.createCopilotAnswer.mockRejectedValue(citationRejected())
 
     const result = await ask()
 
     expect(result).toMatchObject({ ok: false, message: COPILOT_ERROR_MESSAGE })
     expect(db.updateAiFindingStatus).not.toHaveBeenCalled()
+    expect(cache.revalidatePath).not.toHaveBeenCalled()
+    expectNoMutationBeyondTheAnswer()
+  })
+
+  it('a retry after a failed store makes one new atomic store and nothing else', async () => {
+    db.createCopilotAnswer.mockRejectedValueOnce(citationRejected())
+
+    const failed = await ask()
+    const retried = await ask()
+
+    expect(failed.ok).toBe(false)
+    expect(retried.ok).toBe(true)
+    expect(db.createCopilotAnswer).toHaveBeenCalledTimes(2)
     expectNoMutationBeyondTheAnswer()
   })
 

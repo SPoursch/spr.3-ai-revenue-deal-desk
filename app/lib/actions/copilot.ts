@@ -21,8 +21,7 @@ import {
 import { buildExceptionContext } from '../deal-desk/exception-context'
 import { isUuid } from '../deal-desk/forms'
 import {
-  addAiFindingExcerpts,
-  createAiFinding,
+  createCopilotAnswer,
   DealDeskDatabaseError,
   getAccount,
   getDeal,
@@ -42,8 +41,9 @@ import { requireUser } from './require-auth'
  * caller (row level security decides whether it is theirs), retrieval of its
  * non-superseded excerpts, one model call over exactly those sources, and
  * validation of the reply. Only a valid answer is stored: one `answer`
- * finding and its excerpt citations. Nothing else is written — the Copilot
- * never records or changes a Decision, an exception or a provision.
+ * finding and its excerpt citations, in one transaction. Nothing else is
+ * written — the Copilot never records or changes a Decision, an exception or
+ * a provision.
  *
  * The question, the evidence and the model output are never logged.
  */
@@ -192,21 +192,19 @@ export async function askCopilotAction(
     return failure(COPILOT_ERROR_MESSAGE)
   }
 
+  // The answer and its citations are stored together or not at all, so a
+  // failure leaves no answer behind and a retry stores exactly one.
   try {
-    const finding = await createAiFinding({
-      deal_id: dealId,
-      finding_type: 'answer',
-      content: answerContent(result.answer),
-      payload: answerPayload(question, result.answer, sources),
-      model: result.model,
-      prompt_version: COPILOT_PROMPT_VERSION,
-    })
-
-    const citations = excerptCitations(result.answer)
-
-    if (citations.length > 0) {
-      await addAiFindingExcerpts(finding.id, dealId, citations)
-    }
+    await createCopilotAnswer(
+      {
+        deal_id: dealId,
+        content: answerContent(result.answer),
+        payload: answerPayload(question, result.answer, sources),
+        model: result.model,
+        prompt_version: COPILOT_PROMPT_VERSION,
+      },
+      excerptCitations(result.answer),
+    )
   } catch (error) {
     console.error('[copilot] store failed', safeErrorMetadata(error))
 

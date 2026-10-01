@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest'
  *   app/lib/ai/.
  * - The AI module imports nothing from the data layer.
  * - The Copilot action imports from the data layer only by name, from an
- *   allow-list of reads plus the two answer writes — never a namespace
+ *   allow-list of reads plus the one atomic answer write — never a namespace
  *   import, which would reach the re-exported Decision write path — and
  *   names no other mutation.
  * - The pure Copilot core imports neither the data layer nor the provider.
@@ -90,12 +90,14 @@ const ACTION_DB_ALLOW_LIST = [
   'listExceptions',
   'listRulePrecedents',
   'retrieveDealExcerpts',
-  'createAiFinding',
-  'addAiFindingExcerpts',
+  'createCopilotAnswer',
   'DealDeskDatabaseError',
 ]
 
 const FORBIDDEN_IN_AI_PATH = [
+  // The answer and its citations are stored only together (createCopilotAnswer).
+  'createAiFinding',
+  'addAiFindingExcerpts',
   'recordDecision',
   'recordDecisionAction',
   'createException',

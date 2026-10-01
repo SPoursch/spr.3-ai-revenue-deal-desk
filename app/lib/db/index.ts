@@ -34,6 +34,7 @@ export {
 export {
   addAiFindingExcerpts,
   createAiFinding,
+  createCopilotAnswer,
   getAiFinding,
   listAiFindings,
   listCopilotAnswers,

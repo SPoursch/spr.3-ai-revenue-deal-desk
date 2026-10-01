@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import {
+  createAnonymousClient,
   signInTestUser,
   signOutTestUser,
   type SignedInTestUser,
@@ -21,6 +22,10 @@ import {
  * - addAiFindingExcerpts (app/lib/db/ai-findings.ts): a finding's excerpt
  *   citations, in one insert — all or none. The composite keys keep every
  *   citation on the finding's own deal.
+ * - createCopilotAnswer (app/lib/db/ai-findings.ts): one `answer` finding
+ *   and its excerpt citations in one transaction (the database function
+ *   create_copilot_answer) — all or nothing, so a failed citation leaves no
+ *   answer behind and a retry stores exactly one.
  * - listCopilotAnswers (app/lib/db/ai-findings.ts): a deal's `answer`
  *   findings, newest first, at most 10, with their citations.
  *
@@ -43,6 +48,7 @@ import {
   addAiFindingExcerpts,
   createAccount,
   createAiFinding,
+  createCopilotAnswer,
   createDeal,
   createEvidenceExcerpts,
   createEvidenceItem,
@@ -399,6 +405,129 @@ describe('addAiFindingExcerpts', () => {
 
     const { data } = await userA.client.from('ai_finding_excerpts').select('quote').eq('finding_id', finding.id)
     expect(data).toEqual([{ quote: null }])
+  })
+})
+
+describe('createCopilotAnswer: the answer and its citations, all or nothing', () => {
+  const payload = { question: 'atomic?', status: 'answered', claims: [], facts: [] }
+
+  function answerInput(deal: Deal, content: string) {
+    return { deal_id: deal.id, content, payload, model: 'openrouter/test-model', prompt_version: 'copilot-v1' }
+  }
+
+  /** User A's findings with this (run-unique) content. */
+  async function findingsWithContent(content: string) {
+    const { data, error } = await userA.client.from('ai_findings').select('id').eq('content', content)
+    if (error) throw new Error(`Read of ai_findings failed (${error.code}).`)
+    return data
+  }
+
+  async function citationsOf(findingId: string) {
+    const { data, error } = await userA.client
+      .from('ai_finding_excerpts')
+      .select('excerpt_id, quote, deal_id')
+      .eq('finding_id', findingId)
+      .order('excerpt_id')
+    if (error) throw new Error(`Read of ai_finding_excerpts failed (${error.code}).`)
+    return data
+  }
+
+  it('stores a proposed answer and all its citations together', async () => {
+    actAs(userA.client)
+    const content = testName('atomic answer stored')
+
+    const finding = await createCopilotAnswer(answerInput(largeDeal, content), [
+      { excerpt_id: largeExcerpts[0].id, quote: 'liability cap is 12 months' },
+      { excerpt_id: largeExcerpts[3].id, quote: null },
+    ])
+
+    expect(finding).toMatchObject({
+      deal_id: largeDeal.id,
+      finding_type: 'answer',
+      status: 'proposed',
+      content,
+      payload,
+      rule_key: null,
+      rule_version: null,
+      model: 'openrouter/test-model',
+      prompt_version: 'copilot-v1',
+    })
+    expect(await citationsOf(finding.id)).toEqual(
+      [
+        { excerpt_id: largeExcerpts[0].id, quote: 'liability cap is 12 months', deal_id: largeDeal.id },
+        { excerpt_id: largeExcerpts[3].id, quote: null, deal_id: largeDeal.id },
+      ].sort((a, b) => a.excerpt_id.localeCompare(b.excerpt_id)),
+    )
+  })
+
+  it('stores an answer that cites no excerpt', async () => {
+    actAs(userA.client)
+    const content = testName('atomic answer without citations')
+
+    const finding = await createCopilotAnswer(answerInput(largeDeal, content), [])
+
+    expect(await findingsWithContent(content)).toEqual([{ id: finding.id }])
+    expect(await citationsOf(finding.id)).toEqual([])
+  })
+
+  it('stores nothing when a citation is rejected: no answer is left without its evidence', async () => {
+    actAs(userA.client)
+    const content = testName('atomic answer rejected')
+
+    const error = await createCopilotAnswer(answerInput(largeDeal, content), [
+      { excerpt_id: largeExcerpts[0].id, quote: null },
+      // Another deal's excerpt: refused by the composite key.
+      { excerpt_id: otherExcerpts[0].id, quote: null },
+    ]).then(
+      () => null,
+      (reason: unknown) => reason,
+    )
+
+    expect(error).toBeInstanceOf(DealDeskDatabaseError)
+    expect((error as DealDeskDatabaseError).kind).toBe('invalid_input')
+    expect(await findingsWithContent(content)).toEqual([])
+  })
+
+  it('a retry after a failed store leaves exactly one answer', async () => {
+    actAs(userA.client)
+    const content = testName('atomic answer retried')
+
+    await expect(
+      createCopilotAnswer(answerInput(largeDeal, content), [{ excerpt_id: otherExcerpts[0].id, quote: null }]),
+    ).rejects.toBeInstanceOf(DealDeskDatabaseError)
+    const finding = await createCopilotAnswer(answerInput(largeDeal, content), [
+      { excerpt_id: largeExcerpts[0].id, quote: null },
+    ])
+
+    expect(await findingsWithContent(content)).toEqual([{ id: finding.id }])
+    expect(await citationsOf(finding.id)).toHaveLength(1)
+  })
+
+  it("lets neither user B nor an anonymous caller store an answer on user A's deal", async () => {
+    const content = testName('atomic answer by another caller')
+
+    actAs(userB.client)
+    const error = await createCopilotAnswer(answerInput(largeDeal, content), [
+      { excerpt_id: largeExcerpts[0].id, quote: null },
+    ]).then(
+      () => null,
+      (reason: unknown) => reason,
+    )
+    expect(error).toBeInstanceOf(DealDeskDatabaseError)
+    expect((error as DealDeskDatabaseError).kind).toBe('not_permitted')
+
+    // anon has no EXECUTE on the function at all.
+    const anonymous = await createAnonymousClient().rpc('create_copilot_answer', {
+      p_deal_id: largeDeal.id,
+      p_content: content,
+      p_payload: payload,
+      p_model: 'openrouter/test-model',
+      p_prompt_version: 'copilot-v1',
+      p_citations: [],
+    })
+    expect(anonymous.error).not.toBeNull()
+
+    expect(await findingsWithContent(content)).toEqual([])
   })
 })
 
