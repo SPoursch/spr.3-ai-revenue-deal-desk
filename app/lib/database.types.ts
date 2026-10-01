@@ -734,7 +734,35 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      create_copilot_answer: {
+        Args: {
+          p_citations: Json
+          p_content: string
+          p_deal_id: string
+          p_model: string
+          p_payload: Json
+          p_prompt_version: string
+        }
+        Returns: {
+          content: string
+          created_at: string
+          deal_id: string
+          finding_type: string
+          id: string
+          model: string
+          payload: Json | null
+          prompt_version: string
+          rule_key: string | null
+          rule_version: string | null
+          status: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_findings"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
     }
     Enums: {
       [_ in never]: never

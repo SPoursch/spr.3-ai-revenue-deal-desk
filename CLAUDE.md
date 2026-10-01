@@ -88,7 +88,9 @@ destination, **not** the Sprint 3 scope (see "Scope").
   `docs/sprint-3-schema-design.md` in this repository is **superseded** and is
   kept only as a historical record.
 - Done: the Deal Intelligence migration (M3) and the default-privilege
-  hardening (W2), authored in and applied from `gtm-stack-fit`.
+  hardening (W2), authored in and applied from `gtm-stack-fit`. The Copilot
+  answer function (`20261001140548_create_deal_intelligence_copilot_answer`)
+  is applied from there too.
 - Done: the Deal Desk data-access layer in `app/lib/db/` — accounts, deals,
   evidence, provisions, AI findings, exceptions and human Decisions — with
   Vitest unit and integration tests.
@@ -103,7 +105,27 @@ destination, **not** the Sprint 3 scope (see "Scope").
   `/workspace/deals/[dealId]/renew` creates a renewal of a deal, typed
   Renewal, on the predecessor's account and linked through
   `predecessor_deal_id`, and each deal's page links "Renewal of" /
-  "Renewed by". There is no AI module yet.
+  "Renewed by".
+- Feature 6, AI Deal Copilot V1, is built on its feature branch. The AI
+  module is `app/lib/ai/`: `openrouter.ts` is the server-only OpenRouter
+  adapter and the only caller of the provider (pinned model, no fallbacks, no
+  tools); `provider-config.ts` reads `OPENROUTER_API_KEY` and
+  `OPENROUTER_MODEL`, and honours the test-only `COPILOT_PROVIDER_BASE_URL`
+  only for localhost outside production and never on Vercel. The pure core is
+  `app/lib/deal-desk/copilot.ts`, the Server Action `app/lib/actions/copilot.ts`.
+  The V1 contract: one single-turn question (max 500 characters) on the deal
+  page; sign-in check, input validation, reads of that one deal as the caller,
+  bounded full-text retrieval of its non-superseded excerpts and deterministic
+  ranking, exactly one model call over aliased sources (no UUID in the
+  prompt), then validation (answered / insufficient_evidence / out_of_scope,
+  unsupported claims, number guard, verbatim quotes). Only a valid answer is
+  stored: one `proposed` `answer` finding with its fact snapshots and its
+  excerpt citations, together and atomically through the database function
+  `create_copilot_answer` (migration `20261001140548` in `gtm-stack-fit`). The
+  deal page lists the latest 10 stored answers, newest first, never
+  regenerated. The Copilot never creates or changes a Decision, exception or
+  provision. The end-to-end tests run it against a local fake provider
+  (`tests/support/fake-openrouter.mjs`).
 - Deployed on Vercel at https://ai-rev-deal-desk.vercel.app. Automatic Git
   deployments are disabled (`vercel.json`); production is deployed manually
   after review and the security scan.

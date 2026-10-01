@@ -31,6 +31,22 @@ if (existsSync('.env.local')) {
 const PORT = 3100
 const BASE_URL = `http://localhost:${PORT}`
 
+/**
+ * Feature 6: the Copilot never reaches the real model provider in these
+ * tests. A local fake (tests/support/fake-openrouter.mjs) runs on
+ * 127.0.0.1, and the dev server is pointed at it with a fake key and model.
+ * These values are set here, for the dev server only, so they win over any
+ * real key in `.env.local`. The app honours the base-URL override only
+ * outside production and never on Vercel (app/lib/ai/provider-config.ts).
+ */
+const FAKE_PROVIDER_PORT = 4010
+const FAKE_PROVIDER_URL = `http://127.0.0.1:${FAKE_PROVIDER_PORT}`
+const COPILOT_TEST_ENV = {
+  COPILOT_PROVIDER_BASE_URL: `${FAKE_PROVIDER_URL}/api/v1`,
+  OPENROUTER_API_KEY: 'e2e-fake-key',
+  OPENROUTER_MODEL: 'fake/copilot-model',
+}
+
 export default defineConfig({
   testDir: './tests/e2e',
   // The specs share two test users on one database; run them one at a time.
@@ -48,10 +64,23 @@ export default defineConfig({
     video: 'off',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    command: `npm run dev -- --port ${PORT}`,
-    url: `${BASE_URL}/login`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: 'node tests/support/fake-openrouter.mjs',
+      url: `${FAKE_PROVIDER_URL}/__health`,
+      env: { FAKE_OPENROUTER_PORT: String(FAKE_PROVIDER_PORT) },
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+    },
+    {
+      command: `npm run dev -- --port ${PORT}`,
+      url: `${BASE_URL}/login`,
+      env: COPILOT_TEST_ENV,
+      // Never reuse a dev server already on this port: it would lack the fake
+      // provider settings above and could reach the real one. A busy port
+      // fails the run instead.
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 })

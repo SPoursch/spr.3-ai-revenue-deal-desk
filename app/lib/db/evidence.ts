@@ -12,6 +12,7 @@ import {
   type EvidenceItem,
   type EvidenceItemId,
 } from '../deal-desk/domain'
+import { MAX_RETRIEVAL_CANDIDATES, type CopilotExcerpt } from '../deal-desk/copilot'
 import { getSupabaseClient } from '../supabase'
 import { DealDeskDatabaseError } from './errors'
 
@@ -299,4 +300,125 @@ export async function listDealExcerptsByItem(dealId: DealId): Promise<DealExcerp
     }
     return { id, title, evidence_type, excerpts }
   })
+}
+
+// ---------------------------------------------------------------------------
+// Copilot retrieval (Feature 6)
+// ---------------------------------------------------------------------------
+
+/** What the Copilot may send of an excerpt: its text, and its item's title, type, date and status. */
+const COPILOT_EXCERPT_COLUMNS =
+  'id, deal_id, evidence_item_id, ordinal, content, evidence_item:evidence_items!evidence_excerpts_evidence_item_fkey(title, evidence_type, document_date, is_executed)'
+
+export type RetrievedExcerpts = {
+  /** 'all': the deal has no more than `cap` excerpts, and all are here. */
+  mode: 'all' | 'search'
+  excerpts: CopilotExcerpt[]
+}
+
+/** Keeps only letters and digits, so a term is never read as a search operator. */
+function searchQuery(terms: string[]): string {
+  return terms
+    .map((term) => term.replace(/[^\p{L}\p{N}]+/gu, ''))
+    .filter(Boolean)
+    .join(' or ')
+}
+
+/**
+ * The excerpts of one deal the Copilot may send for a question, read as the
+ * caller under row level security, never from superseded evidence.
+ *
+ * When the deal has no more than `cap` such excerpts, all of them come back
+ * (`mode: 'all'`). Otherwise a full-text search on `content_tsv` (english,
+ * matching the generated column) for any of the terms returns at most
+ * MAX_RETRIEVAL_CANDIDATES, for the caller to rank (`mode: 'search'`); no
+ * terms find nothing. Both are in the order the evidence was added. A deal
+ * that is not the caller's yields no excerpts; a failed read throws.
+ */
+export async function retrieveDealExcerpts({
+  dealId,
+  terms,
+  cap,
+}: {
+  dealId: DealId
+  terms: string[]
+  cap: number
+}): Promise<RetrievedExcerpts> {
+  const supabase = getSupabaseClient()
+
+  // The items a later item of this deal supersedes.
+  const superseded = await supabase
+    .from(EVIDENCE_ITEMS_TABLE)
+    .select('supersedes_evidence_id')
+    .eq('deal_id', dealId)
+    .not('supersedes_evidence_id', 'is', null)
+  if (superseded.error) {
+    throw new DealDeskDatabaseError('select', EVIDENCE_ITEMS_TABLE, superseded.error)
+  }
+  const supersededIds = superseded.data.flatMap((row) =>
+    row.supersedes_evidence_id ? [row.supersedes_evidence_id] : [],
+  )
+
+  const current = () => {
+    let query = supabase.from(EVIDENCE_EXCERPTS_TABLE).select(COPILOT_EXCERPT_COLUMNS).eq('deal_id', dealId)
+    if (supersededIds.length > 0) {
+      query = query.not('evidence_item_id', 'in', `(${supersededIds.join(',')})`)
+    }
+    return query
+  }
+  const inOrder = <Q extends ReturnType<typeof current>>(query: Q) =>
+    query
+      .order('created_at', { ascending: true })
+      .order('evidence_item_id', { ascending: true })
+      .order('ordinal', { ascending: true })
+
+  // One more than the cap tells whether the deal has more than the cap.
+  const first = await inOrder(current()).limit(cap + 1)
+  if (first.error) {
+    throw new DealDeskDatabaseError('select', EVIDENCE_EXCERPTS_TABLE, first.error)
+  }
+  if (first.data.length <= cap) {
+    return { mode: 'all', excerpts: first.data.map(toCopilotExcerpt) }
+  }
+
+  const query = searchQuery(terms)
+  if (query === '') return { mode: 'search', excerpts: [] }
+
+  const searched = await inOrder(
+    current().textSearch('content_tsv', query, { type: 'websearch', config: 'english' }),
+  ).limit(MAX_RETRIEVAL_CANDIDATES)
+  if (searched.error) {
+    throw new DealDeskDatabaseError('select', EVIDENCE_EXCERPTS_TABLE, searched.error)
+  }
+  return { mode: 'search', excerpts: searched.data.map(toCopilotExcerpt) }
+}
+
+type CopilotExcerptRow = {
+  id: string
+  deal_id: string
+  evidence_item_id: string
+  ordinal: number
+  content: string
+  evidence_item: Pick<Tables<'evidence_items'>, 'title' | 'evidence_type' | 'document_date' | 'is_executed'> | null
+}
+
+function toCopilotExcerpt(row: CopilotExcerptRow): CopilotExcerpt {
+  const item = row.evidence_item
+  if (!item || !isEvidenceType(item.evidence_type)) {
+    throw new Error(
+      `Excerpt ${row.id} came back without its evidence item, or with an evidence_type ` +
+        `unknown to the domain vocabulary; update app/lib/deal-desk/domain.ts.`,
+    )
+  }
+  return {
+    id: row.id,
+    deal_id: row.deal_id,
+    evidence_item_id: row.evidence_item_id,
+    ordinal: row.ordinal,
+    content: row.content,
+    evidence_title: item.title,
+    evidence_type: item.evidence_type,
+    document_date: item.document_date,
+    is_executed: item.is_executed,
+  }
 }

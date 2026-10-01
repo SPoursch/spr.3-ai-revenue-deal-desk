@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
+import { CopilotAnswers } from '@/app/components/deal-desk/CopilotAnswers'
+import { CopilotForm } from '@/app/components/deal-desk/CopilotForm'
 import { CheckDealForm } from '@/app/components/deal-desk/ExceptionForms'
 
 import {
@@ -11,6 +13,7 @@ import {
   SECONDARY_LINK_CLASS,
   TEXT_LINK_CLASS,
 } from '@/app/components/deal-desk/styles'
+import { buildCopilotSources } from '@/app/lib/deal-desk/copilot'
 import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
@@ -28,6 +31,7 @@ import {
   getAccount,
   getAuthenticatedUser,
   getDeal,
+  listCopilotAnswers,
   listDeals,
   listEvidenceItems,
   listExceptions,
@@ -80,7 +84,7 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
 
   // A failed read goes to the workspace error page, so an evidence list that
   // could not be loaded never looks like "No evidence yet".
-  const [account, predecessor, renewals, evidence, provisions, exceptions] = await Promise.all([
+  const [account, predecessor, renewals, evidence, provisions, exceptions, copilotAnswers] = await Promise.all([
     getAccount(deal.account_id),
     deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
     listDeals().then((deals) => deals.filter((d) => d.predecessor_deal_id === deal.id)),
@@ -100,7 +104,20 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
         (a, b) => Number(isClosed(a.status)) - Number(isClosed(b.status)),
       ),
     ),
+    // The stored answers as they were made, newest first, at most 10.
+    listCopilotAnswers(deal.id),
   ])
+
+  // The deal's facts as they are now, against which each stored answer's
+  // fact snapshots are compared ("changed since this answer").
+  const currentFacts = buildCopilotSources({
+    deal,
+    account,
+    predecessor,
+    provisions: provisions.map(({ provision }) => provision),
+    exceptions: [],
+    excerpts: [],
+  })
 
   const details: [string, string][] = [
     ['Account', account?.name ?? 'Unknown account'],
@@ -278,6 +295,23 @@ export default async function DealPage({ params }: PageProps<'/workspace/deals/[
             ))}
           </ul>
         )}
+      </section>
+
+      <section aria-label="Copilot" className="mt-8 flex flex-col gap-6">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-[20px] font-bold tracking-tight">AI Deal Copilot</h2>
+          <p className="text-[14px] text-muted">
+            Ask one question about this deal. The Copilot answers only from this deal&apos;s
+            facts, evidence and exceptions, cites its sources, and never decides anything.
+          </p>
+        </div>
+        <CopilotForm dealId={deal.id} />
+        <CopilotAnswers
+          dealId={deal.id}
+          answers={copilotAnswers}
+          currentSources={currentFacts}
+          exceptions={exceptions}
+        />
       </section>
     </main>
   )
