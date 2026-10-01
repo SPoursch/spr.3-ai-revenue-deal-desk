@@ -32,9 +32,11 @@ export {
 } from './accounts'
 
 export {
+  addAiFindingExcerpts,
   createAiFinding,
   getAiFinding,
   listAiFindings,
+  listCopilotAnswers,
   updateAiFindingStatus,
 } from './ai-findings'
 
@@ -63,6 +65,7 @@ export {
   listDealExcerptsByItem,
   listEvidenceExcerpts,
   listEvidenceItems,
+  retrieveDealExcerpts,
 } from './evidence'
 
 export {
@@ -99,6 +102,7 @@ export {
   verifyEmailToken,
 } from './auth'
 
+export type { CopilotAnswerRecord } from './ai-findings'
 export type { DatabaseErrorKind } from './errors'
 export {
   DealDeskDatabaseError,
