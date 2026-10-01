@@ -7,6 +7,7 @@ import {
   type DecisionId,
   type ExceptionId,
   type RecordExceptionDecisionInput,
+  type RulePrecedent,
 } from '../deal-desk/domain'
 import { getSupabaseClient } from '../supabase'
 import { DealDeskDatabaseError, DecisionValidationError } from './errors'
@@ -167,4 +168,69 @@ export async function getDecision(id: DecisionId): Promise<Decision | null> {
   }
 
   return data ? toDecision(data) : null
+}
+
+/** How many earlier Decisions the Exception Context shows: a fixed bound, never all. */
+const MAX_RULE_PRECEDENTS = 5
+
+/**
+ * A Decision with the rule key and version of its exception and the id, name
+ * and account of its deal. The inner joins drop deal-level Decisions (no
+ * exception); each embed names its foreign key, so the joins are never
+ * ambiguous.
+ */
+const RULE_PRECEDENT_COLUMNS =
+  'id, decision_type, rationale, created_at, exception_id, exception:exceptions!decisions_exception_fkey!inner(rule_key, rule_version), deal:deals!decisions_deal_id_fkey!inner(id, name, account_id)'
+
+/**
+ * The newest Decisions already recorded on the same rule for one account's
+ * deals, at most five: this deal's own earlier exceptions and the account's
+ * other deals (Feature 5: Exception / Context). The current exception's own
+ * Decisions are left out, as are deal-level Decisions.
+ *
+ * One bounded read, filtered in the database and run as the caller: row
+ * level security limits it to the caller's own deals. A failed read throws;
+ * it never comes back as an empty precedent list.
+ */
+export async function listRulePrecedents({
+  accountId,
+  ruleKey,
+  excludeExceptionId,
+}: {
+  accountId: string
+  ruleKey: string
+  excludeExceptionId: ExceptionId
+}): Promise<RulePrecedent[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(DECISIONS_TABLE)
+    .select(RULE_PRECEDENT_COLUMNS)
+    .eq('exception.rule_key', ruleKey)
+    .eq('deal.account_id', accountId)
+    .neq('exception_id', excludeExceptionId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(MAX_RULE_PRECEDENTS)
+
+  if (error) {
+    throw new DealDeskDatabaseError('select', DECISIONS_TABLE, error)
+  }
+
+  return data.map(({ id, decision_type, rationale, created_at, exception_id, exception, deal }) => {
+    if (!isDecisionType(decision_type) || exception_id === null || !exception || !deal) {
+      throw new Error(
+        `Precedent Decision ${id} came back without its exception or deal, or with a ` +
+          `decision type unknown to the domain vocabulary (${decision_type}).`,
+      )
+    }
+    return {
+      decision_id: id,
+      decision_type,
+      rationale,
+      created_at,
+      exception_id,
+      rule_version: exception.rule_version,
+      deal_id: deal.id,
+      deal_name: deal.name,
+    }
+  })
 }

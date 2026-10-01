@@ -497,10 +497,13 @@ describe('decisions: immutable and not independently deletable', () => {
   })
 
   it('offers no function that could change or delete a Decision', () => {
+    // The exact list: recordDecision is the only write; every other export is
+    // a read. listRulePrecedents is the read-only precedent query (Feature 5).
     expect(Object.keys(decisionsModule).sort()).toEqual([
       'getDecision',
       'listDecisions',
       'listExceptionDecisions',
+      'listRulePrecedents',
       'recordDecision',
     ])
   })
