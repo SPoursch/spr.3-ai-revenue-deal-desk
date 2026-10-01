@@ -446,3 +446,136 @@ Two preconditions came before the first migration:
 
 Schema design has since been completed and now lives in
 `gtm-stack-fit/docs/platform-persistence-design.md`.
+
+---
+
+## 10. Feature 7 — Attention / Renewal Intelligence (V1 contract)
+
+Status: **agreed V1 contract, implemented** (`app/lib/deal-desk/attention.ts`,
+`listLiveExceptions` in `app/lib/db/exceptions.ts`, `/workspace/attention`),
+with the unit, integration, end-to-end and source-guard tests below. It serves
+the North Star's
+"what requires attention and why" for renewal timing, and implements
+representative behaviour 1 of §4 ("Which deals renew next quarter?") as
+deterministic only: no retrieval and no LLM.
+
+### Problem and workflow
+
+The workspace lists deals but does not show which renewals fall in the next
+quarter, whose notice deadline is close or already missed, which renewals have
+no successor deal yet, or which still carry open exceptions. The user opens the
+Attention view, sees each deal flagged with a plain reason, follows it to the
+deal page (facts, exceptions, Copilot) and acts there. The view itself never
+decides or changes anything.
+
+### Decisions
+
+| # | Decision |
+|---|---|
+| **A1** | **Attention is a derived, time-dependent read model.** It is computed on every request from stored data and the current date in Europe/Berlin, and may change as that date changes even when no deal data does. It is never stored and raises no exception. It does **not** change the exception applicability model: rules (§3 RULE) stay pure functions of stored deal data, and timing is not a rule in V1. |
+| **A2** | **A dedicated page, `/workspace/attention`**, linked as "Attention" from the workspace header. The deal list is unchanged. |
+| **A3** | **A 30-day notice window**, and **ARR > €50,000 (U11) as an optional URL filter**, not a precondition for being listed. |
+
+### Data sources (all existing; no new table)
+
+- Deal facts: `renewal_date`, `notice_period_days`, `auto_renew`, `arr_eur`,
+  `stage`, `name`, `account_id`.
+- Renewal lineage (U13): `predecessor_deal_id`, read in reverse to find a
+  deal's successors from the caller's deals. Nothing makes a successor
+  unique, so a deal may have several.
+- Account names.
+- Live exceptions: the caller's exceptions with status *open* or *under
+  review* across their deals (`deal_id`, `severity`, `status`), through one
+  new data-access read in `app/lib/db`. The result grows with the caller's
+  deals, and the hosted API caps a response's rows without an error, so the
+  read requests the exact total and throws when it receives fewer rows than
+  that — an incomplete list would undercount exceptions.
+
+### Derived vs stored
+
+Everything Feature 7 shows is derived at request time: today's Berlin date, the
+next-quarter range, each notice deadline, every reason, the successor links,
+exception counts and the order. Nothing is stored, and no migration is needed.
+
+### Deterministic rules
+
+All in one pure module (`app/lib/deal-desk/attention.ts`), with `now` injected
+so it can be tested; thresholds are named constants.
+
+- **Today** is the current date in Europe/Berlin. Date arithmetic works on
+  calendar dates (`YYYY-MM-DD`), so daylight-saving changes cannot shift a day.
+- **Next quarter** is the calendar quarter after today's Berlin quarter (U12),
+  rolling over the year (Q4 → Q1 of the next year).
+- **Notice deadline** = `renewal_date − notice_period_days`; a notice period
+  of 0 makes it the renewal date itself.
+  - *Missed:* deadline < today ≤ renewal date.
+  - *Due soon:* today ≤ deadline ≤ today + 30 days.
+  - *Cannot compute:* a renewal date without a notice period. Missing data is
+    shown as a gap, never read as safe.
+- **Renews next quarter:** the renewal date lies in the next-quarter range.
+- **Renewal not prepared:** a listed deal that no deal names as its
+  predecessor. A deal with successors shows "Renewed by" with **every**
+  successor, never just one, ordered by renewal date ascending (successors
+  without a renewal date last), then by deal name.
+- **ARR filter:** strictly `arr_eur > 50000`; exactly €50,000 is excluded.
+- **Not listed:** deals without a renewal date, and deals whose renewal date
+  has passed.
+- **Order:** missed deadlines first, then the soonest deadline, then the
+  soonest renewal date, then the deal name.
+
+### UI
+
+- `/workspace/attention`, a Server Component rendered per request. It names
+  the next-quarter range and the "as of" Berlin date it used.
+- Sections: **Notice deadlines** (missed / due soon), **Renewing next
+  quarter**, **Cannot compute**, each with its own empty state.
+- Each row: the deal (linked), account, ARR, renewal date, notice deadline,
+  auto-renew (Yes / No / Unknown), "Renewed by …" listing every successor
+  (each linked) or "No renewal deal yet",
+  and the count of open exceptions (linking to the deal).
+- The ARR filter is a link that toggles `?arr=over-50k`; any other value is
+  ignored.
+- No form, no Server Action, no AI. A failed load shows an alert, never an
+  empty section (§6).
+
+### Test contract
+
+- **Unit (pure):** the next quarter in each of the four quarters, the year
+  rollover, and Berlin-vs-UTC midnight (31 March 22:30 UTC is already 1 April
+  in Berlin); notice deadline missed, due soon, beyond 30 days, zero and
+  missing notice period; the €50,000 boundary; successor detection,
+  including several successors in their order; the
+  exclusions; the order; *cannot compute* never counted as safe.
+- **Integration (hosted database, two users):** the live-exceptions read
+  returns only *open* and *under review* rows, never another user's; a
+  failed read throws, and so does a response with fewer rows than its exact
+  count.
+- **End-to-end (Playwright, user A):** deals seeded with dates computed from
+  the run date by the same pure helper; each section's membership, the stated
+  quarter range, every "Renewed by" link and its target, the open-exception
+  count, the
+  `?arr=over-50k` filter, the empty states, the signed-out redirect, and that
+  user B's deals never appear.
+- **Source guard:** the Attention page and module import nothing from
+  `app/lib/ai/` and name no data-layer write.
+
+### Security
+
+- Read-only: no mutation, no Server Action, no model call, no provider key.
+- The page verifies the user on the server and redirects to `/login`. Every
+  read goes through `app/lib/db` as the caller; RLS is the authority for the
+  cross-deal exceptions read, and the status filter is defence in depth.
+- Search parameters are untrusted: only the known filter value is accepted.
+- No new table, grant, function or service-role use.
+
+### Deferred (not Feature 7 V1)
+
+- AI explanations of attention, representative behaviour 3 (LLM judgement of
+  renewal provisions across deals), renewal timing as Copilot sources, and any
+  cross-deal Copilot question.
+- Creating `notice_reminder` Actions, or any Actions data layer.
+- Recording deal outcomes (renewed, churned).
+- A stored `timing_risk` exception rule (see A1).
+- Notifications or email, dashboards, forecasting, automatic creation of
+  renewal deals.
+- Configurable thresholds or horizons, fiscal calendars, multi-currency.
