@@ -4,12 +4,17 @@ import { notFound, redirect } from 'next/navigation'
 
 import { DecisionForm } from '@/app/components/deal-desk/ExceptionForms'
 import { CARD_CLASS, PAGE_CLASS, TEXT_LINK_CLASS } from '@/app/components/deal-desk/styles'
+import { buildExceptionContext } from '@/app/lib/deal-desk/exception-context'
 import {
+  DEAL_STAGE_LABELS,
+  DEAL_TYPE_LABELS,
   DECISION_TYPE_LABELS,
   EXCEPTION_SEVERITY_LABELS,
   EXCEPTION_STATUS_LABELS,
+  NOT_SET,
   PROVISION_TYPE_LABELS,
   formatDate,
+  formatEur,
 } from '@/app/lib/deal-desk/format'
 import { isUuid } from '@/app/lib/deal-desk/forms'
 import {
@@ -19,12 +24,14 @@ import {
   type ExceptionApplicability,
 } from '@/app/lib/deal-desk/rules'
 import {
+  getAccount,
   getAuthenticatedUser,
   getDeal,
   getException,
   listExceptionDecisions,
   listProvisionCitations,
   listProvisions,
+  listRulePrecedents,
 } from '@/app/lib/db'
 
 /**
@@ -37,6 +44,13 @@ import {
  * "Check deal", and is worked out each time, never stored: only a Decision
  * closes an exception. A failed read goes to the error page, so it is never
  * shown as "no longer applies".
+ *
+ * Above the Decisions, the exception's Context (Feature 5): the facts the
+ * rule declared it read, the deal and, for a renewal, its predecessor's own
+ * reading of the same rule, the account, the rule's policy and earlier
+ * Decisions on the same rule for this account. It is derived from the reads
+ * below and never stored; a failed read of any of it goes to the error page,
+ * so "no precedent" always means none was found.
  */
 export const dynamic = 'force-dynamic'
 
@@ -75,16 +89,35 @@ export default async function ExceptionPage({
     notFound()
   }
 
-  const [provisions, predecessor, decisions] = await Promise.all([
+  const [provisions, predecessor, decisions, account, precedent] = await Promise.all([
     listProvisions(deal.id),
     deal.predecessor_deal_id ? getDeal(deal.predecessor_deal_id) : null,
     listExceptionDecisions(exception.id),
+    getAccount(deal.account_id),
+    listRulePrecedents({
+      accountId: deal.account_id,
+      ruleKey: exception.rule_key,
+      excludeExceptionId: exception.id,
+    }),
   ])
 
   const provision = exception.provision_id
     ? (provisions.find((p) => p.id === exception.provision_id) ?? null)
     : null
-  const citations = provision ? await listProvisionCitations(provision.id) : []
+  const [citations, predecessorProvisions] = await Promise.all([
+    provision ? listProvisionCitations(provision.id) : [],
+    predecessor ? listProvisions(predecessor.id) : [],
+  ])
+
+  const context = buildExceptionContext({
+    exception,
+    deal,
+    account,
+    provisions,
+    predecessor,
+    predecessorProvisions,
+    precedent,
+  })
 
   const applicability = exceptionApplicability(
     exception,
@@ -92,6 +125,21 @@ export default async function ExceptionPage({
   )
   const rule = ruleOf(exception.rule_key)
   const live = exception.status === 'open' || exception.status === 'under_review'
+
+  const dealDetails: [string, string][] = [
+    ['Type', DEAL_TYPE_LABELS[context.deal.deal_type]],
+    ['Stage', DEAL_STAGE_LABELS[context.deal.stage]],
+    ['ARR', formatEur(context.deal.arr_eur)],
+    ['Renewal date', formatDate(context.deal.renewal_date)],
+  ]
+
+  const accountDetails: [string, string][] = [
+    ['Account', context.account.name ?? NOT_SET],
+    ['Region', context.account.region ?? NOT_SET],
+    ['Country', context.account.country_code ?? NOT_SET],
+    ['Segment', context.account.segment ?? NOT_SET],
+    ['Industry', context.account.industry ?? NOT_SET],
+  ]
 
   const details: [string, string][] = [
     ['Rule', `${exception.rule_key} (version ${exception.rule_version})`],
@@ -159,6 +207,159 @@ export default async function ExceptionPage({
           <p className="mt-3 text-[15px] text-muted">
             Raised on the deal&apos;s own figures; see the reason above.
           </p>
+        )}
+      </section>
+
+      <section aria-label="Facts used" className="mt-8">
+        <h2 className="text-[20px] font-bold tracking-tight">Facts used</h2>
+        {context.factsUsed.basis === 'unknown_rule' ? (
+          <p className="mt-3 text-[15px] text-muted">
+            This rule is not in the rule registry, so the facts it read cannot be shown.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-[14px] text-muted">
+              {context.factsUsed.basis === 'raising_rule'
+                ? 'What the rule read from the deal\'s current data.'
+                : `What the current version of the rule reads from the deal's current data; this exception was raised under version ${exception.rule_version}.`}
+            </p>
+            <dl className={`${CARD_CLASS} mt-3 grid gap-x-6 sm:grid-cols-2`}>
+              {context.factsUsed.facts.map((fact) => (
+                <div
+                  key={fact.label}
+                  className="flex flex-col gap-1 border-b border-border px-6 py-4"
+                >
+                  <dt className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+                    {fact.label}
+                  </dt>
+                  <dd className="text-[15px]">{fact.value ?? NOT_SET}</dd>
+                </div>
+              ))}
+            </dl>
+          </>
+        )}
+      </section>
+
+      <section aria-label="Deal context" className="mt-8">
+        <h2 className="text-[20px] font-bold tracking-tight">Deal context</h2>
+        <dl className={`${CARD_CLASS} mt-3 grid gap-x-6 sm:grid-cols-2`}>
+          {dealDetails.map(([term, value]) => (
+            <div key={term} className="flex flex-col gap-1 border-b border-border px-6 py-4">
+              <dt className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+                {term}
+              </dt>
+              <dd className="text-[15px]">{value}</dd>
+            </div>
+          ))}
+        </dl>
+        {context.deal.predecessor ? (
+          <div className={`${CARD_CLASS} mt-3 px-6 py-4`}>
+            <p className="text-[15px]">
+              Renewal of{' '}
+              <Link
+                href={`/workspace/deals/${context.deal.predecessor.id}`}
+                className={TEXT_LINK_CLASS}
+              >
+                {context.deal.predecessor.name}
+              </Link>
+            </p>
+            {context.deal.predecessor.facts.length > 0 ? (
+              <>
+                <p className="mt-2 text-[13px] text-muted">
+                  The predecessor&apos;s own reading of the same rule:
+                </p>
+                <ul className="mt-1 flex flex-col gap-1 text-[15px]">
+                  {context.deal.predecessor.facts.map((fact) => (
+                    <li key={fact.label}>
+                      {fact.label}: {fact.value ?? NOT_SET}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section aria-label="Account context" className="mt-8">
+        <h2 className="text-[20px] font-bold tracking-tight">Account context</h2>
+        <dl className={`${CARD_CLASS} mt-3 grid gap-x-6 sm:grid-cols-2`}>
+          {accountDetails.map(([term, value]) => (
+            <div key={term} className="flex flex-col gap-1 border-b border-border px-6 py-4">
+              <dt className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+                {term}
+              </dt>
+              <dd className="text-[15px]">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+
+      <section aria-label="Policy" className="mt-8">
+        <h2 className="text-[20px] font-bold tracking-tight">Policy</h2>
+        <div className={`${CARD_CLASS} mt-3 px-6 py-4 text-[15px]`}>
+          {context.policy.status === 'current' ? (
+            <>
+              <p>{context.policy.statement}</p>
+              <p className="mt-1 text-[13px] text-muted">
+                Rule version {context.policy.version}, under which this exception was raised.
+              </p>
+            </>
+          ) : context.policy.status === 'changed' ? (
+            <>
+              <p>
+                This exception was raised under rule version{' '}
+                {context.policy.raisedUnderVersion}, whose wording is no longer available.
+              </p>
+              <p className="mt-1">
+                The current policy, rule version {context.policy.currentVersion}:{' '}
+                {context.policy.currentStatement}
+              </p>
+            </>
+          ) : (
+            <p>
+              This exception was raised by a rule the registry does not know (rule version{' '}
+              {context.policy.raisedUnderVersion}); no policy can be shown.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section aria-label="Precedent" className="mt-8">
+        <h2 className="text-[20px] font-bold tracking-tight">Precedent</h2>
+        <p className="mt-2 text-[14px] text-muted">
+          The newest five Decisions on this rule for this account&apos;s deals, other than
+          this exception&apos;s own.
+        </p>
+        {context.precedent.length === 0 ? (
+          <p className="mt-3 text-[15px] text-muted">
+            No earlier Decision on this rule for this account.
+          </p>
+        ) : (
+          <ol className="mt-3 flex flex-col gap-3">
+            {context.precedent.map((item) => (
+              <li
+                key={item.decision_id}
+                className={`${CARD_CLASS} flex flex-col gap-1 px-6 py-4`}
+              >
+                <p className="text-[15px] font-semibold">
+                  {DECISION_TYPE_LABELS[item.decision_type]}
+                  <span className="ml-2 text-[13px] font-normal text-muted">
+                    {formatDate(item.created_at.slice(0, 10))} · rule version {item.rule_version}
+                  </span>
+                </p>
+                <p className="text-[14px]">
+                  <Link
+                    href={`/workspace/deals/${item.deal_id}/exceptions/${item.exception_id}`}
+                    className={TEXT_LINK_CLASS}
+                  >
+                    {item.deal_name}
+                  </Link>
+                </p>
+                <p className="whitespace-pre-wrap text-[15px]">{item.rationale}</p>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
 

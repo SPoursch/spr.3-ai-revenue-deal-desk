@@ -50,6 +50,7 @@ export {
   getDecision,
   listDecisions,
   listExceptionDecisions,
+  listRulePrecedents,
   recordDecision,
 } from './decisions'
 

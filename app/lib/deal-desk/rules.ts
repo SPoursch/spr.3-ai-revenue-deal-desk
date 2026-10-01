@@ -6,7 +6,7 @@ import type {
   Provision,
   ProvisionType,
 } from './domain'
-import { formatEur, formatPercent } from './format'
+import { formatEur, formatPercent, formatProvisionAmount } from './format'
 
 /**
  * The Deal Desk rule registry, V1 (Rules → Exceptions → Decisions).
@@ -19,6 +19,11 @@ import { formatEur, formatPercent } from './format'
  * A rule either holds, does not hold, or cannot be evaluated because the data
  * it needs is missing or not in a comparable unit. Only a rule that holds can
  * raise an exception, and missing data is never read as compliance.
+ *
+ * Every evaluation also reports the facts the rule read, whatever its outcome,
+ * so the Exception Context shows exactly what was judged rather than reading
+ * it again. Each rule states its policy, built from the same threshold
+ * constants as its verdict and its why.
  *
  * The thresholds are business policy, fixed by the product owner. Changing
  * one means a new `rule_version`, so an exception already decided under the
@@ -41,6 +46,17 @@ export type RuleInput = {
 
 export type RuleOutcome = 'holds' | 'does_not_hold' | 'cannot_evaluate'
 
+/**
+ * One fact a rule read, ready to show: a label, the value as displayed, or
+ * null when it is missing, and the provision it came from, if any. A fact
+ * without a provision id is one of the deal's own figures.
+ */
+export type RuleFact = {
+  label: string
+  value: string | null
+  provision_id: string | null
+}
+
 /** A rule's verdict on one deal. `title` and `why` are set only when it holds. */
 export type RuleEvaluation = {
   rule_key: string
@@ -51,9 +67,11 @@ export type RuleEvaluation = {
   title: string | null
   why: string | null
   provision_id: string | null
+  /** The facts the rule read, for every outcome. */
+  facts: RuleFact[]
 }
 
-type Verdict = Pick<RuleEvaluation, 'outcome' | 'title' | 'why' | 'provision_id'>
+type Verdict = Pick<RuleEvaluation, 'outcome' | 'title' | 'why' | 'provision_id' | 'facts'>
 
 type Rule = {
   rule_key: string
@@ -62,23 +80,49 @@ type Rule = {
   severity: ExceptionSeverity
   /** The provision the rule is about, or null for a rule on the deal's own figures. */
   provision_type: ProvisionType | null
+  /** The policy this version of the rule enforces, stated from its threshold. */
+  policy: string
   evaluate: (input: RuleInput) => Verdict
 }
 
-const DOES_NOT_HOLD: Verdict = { outcome: 'does_not_hold', title: null, why: null, provision_id: null }
-const CANNOT_EVALUATE: Verdict = {
-  outcome: 'cannot_evaluate',
-  title: null,
-  why: null,
-  provision_id: null,
+function doesNotHold(facts: RuleFact[]): Verdict {
+  return { outcome: 'does_not_hold', title: null, why: null, provision_id: null, facts }
 }
 
-function holds(title: string, why: string, provisionId: string | null = null): Verdict {
-  return { outcome: 'holds', title, why, provision_id: provisionId }
+function cannotEvaluate(facts: RuleFact[]): Verdict {
+  return { outcome: 'cannot_evaluate', title: null, why: null, provision_id: null, facts }
+}
+
+function holds(
+  title: string,
+  why: string,
+  facts: RuleFact[],
+  provisionId: string | null = null,
+): Verdict {
+  return { outcome: 'holds', title, why, provision_id: provisionId, facts }
 }
 
 function provisionOf(input: RuleInput, type: ProvisionType) {
   return input.provisions.find((provision) => provision.provision_type === type) ?? null
+}
+
+/** A provision as a fact: its amount with its unit, or missing when it has no number. */
+function provisionFact(
+  label: string,
+  provision: RuleInput['provisions'][number] | null,
+): RuleFact {
+  return {
+    label,
+    value:
+      provision !== null && provision.value_numeric !== null
+        ? formatProvisionAmount(provision.value_numeric, provision.value_unit)
+        : null,
+    provision_id: provision?.id ?? null,
+  }
+}
+
+function dealFact(label: string, value: string | null): RuleFact {
+  return { label, value, provision_id: null }
 }
 
 export const RULES: readonly Rule[] = [
@@ -88,13 +132,18 @@ export const RULES: readonly Rule[] = [
     kind: 'threshold_breach',
     severity: 'medium',
     provision_type: null,
+    policy: `A deal's discount must not exceed ${formatPercent(MAX_DISCOUNT_PCT)}.`,
     evaluate: ({ deal }) => {
-      if (deal.discount_pct === null) return CANNOT_EVALUATE
-      if (deal.discount_pct <= MAX_DISCOUNT_PCT) return DOES_NOT_HOLD
+      const facts = [
+        dealFact('Discount', deal.discount_pct === null ? null : formatPercent(deal.discount_pct)),
+      ]
+      if (deal.discount_pct === null) return cannotEvaluate(facts)
+      if (deal.discount_pct <= MAX_DISCOUNT_PCT) return doesNotHold(facts)
       return holds(
         'Discount above 20%',
         `The deal's discount is ${formatPercent(deal.discount_pct)}, above the ` +
           `${formatPercent(MAX_DISCOUNT_PCT)} standard.`,
+        facts,
       )
     },
   },
@@ -104,32 +153,39 @@ export const RULES: readonly Rule[] = [
     kind: 'non_standard_provision',
     severity: 'high',
     provision_type: 'liability_cap',
+    policy:
+      `A liability cap must be at least ${MIN_LIABILITY_CAP_MONTHS} months of fees ` +
+      `(the deal's ARR, for a cap in EUR).`,
     evaluate: (input) => {
       const cap = provisionOf(input, 'liability_cap')
-      if (cap === null || cap.value_numeric === null) return CANNOT_EVALUATE
+      const facts = [provisionFact('Liability cap', cap)]
+      if (cap === null || cap.value_numeric === null) return cannotEvaluate(facts)
 
       const title = 'Liability cap below 12 months of fees'
       if (cap.value_unit === 'months_of_fees') {
-        if (cap.value_numeric >= MIN_LIABILITY_CAP_MONTHS) return DOES_NOT_HOLD
+        if (cap.value_numeric >= MIN_LIABILITY_CAP_MONTHS) return doesNotHold(facts)
         return holds(
           title,
           `The liability cap is ${cap.value_numeric} months of fees, below the ` +
             `${MIN_LIABILITY_CAP_MONTHS}-month standard.`,
+          facts,
           cap.id,
         )
       }
       if (cap.value_unit === 'eur') {
-        // Twelve months of fees is the deal's ARR.
+        // Twelve months of fees is the deal's ARR, which the rule also read.
+        facts.push(dealFact('ARR', formatEur(input.deal.arr_eur)))
         const minimum = (input.deal.arr_eur * MIN_LIABILITY_CAP_MONTHS) / 12
-        if (cap.value_numeric >= minimum) return DOES_NOT_HOLD
+        if (cap.value_numeric >= minimum) return doesNotHold(facts)
         return holds(
           title,
           `The liability cap is ${formatEur(cap.value_numeric)}, below ` +
             `${MIN_LIABILITY_CAP_MONTHS} months of fees (${formatEur(minimum)}, the deal's ARR).`,
+          facts,
           cap.id,
         )
       }
-      return CANNOT_EVALUATE
+      return cannotEvaluate(facts)
     },
   },
   {
@@ -138,16 +194,19 @@ export const RULES: readonly Rule[] = [
     kind: 'non_standard_provision',
     severity: 'medium',
     provision_type: 'payment_terms',
+    policy: `Payment terms must not be longer than Net ${MAX_PAYMENT_TERMS_DAYS}.`,
     evaluate: (input) => {
       const terms = provisionOf(input, 'payment_terms')
+      const facts = [provisionFact('Payment terms', terms)]
       if (terms === null || terms.value_numeric === null || terms.value_unit !== 'days') {
-        return CANNOT_EVALUATE
+        return cannotEvaluate(facts)
       }
-      if (terms.value_numeric <= MAX_PAYMENT_TERMS_DAYS) return DOES_NOT_HOLD
+      if (terms.value_numeric <= MAX_PAYMENT_TERMS_DAYS) return doesNotHold(facts)
       return holds(
         'Payment terms longer than Net 30',
         `Payment terms are ${terms.value_numeric} days, longer than the ` +
           `Net ${MAX_PAYMENT_TERMS_DAYS} standard.`,
+        facts,
         terms.id,
       )
     },
@@ -158,14 +217,20 @@ export const RULES: readonly Rule[] = [
     kind: 'commercial_risk',
     severity: 'high',
     provision_type: null,
+    policy: 'A renewal must not be priced below its predecessor (any decrease counts).',
     evaluate: ({ deal, predecessor }) => {
-      if (deal.deal_type !== 'renewal' || predecessor === null) return CANNOT_EVALUATE
+      const facts = [
+        dealFact('ARR', formatEur(deal.arr_eur)),
+        dealFact('Predecessor ARR', predecessor === null ? null : formatEur(predecessor.arr_eur)),
+      ]
+      if (deal.deal_type !== 'renewal' || predecessor === null) return cannotEvaluate(facts)
       // Any decrease counts.
-      if (deal.arr_eur >= predecessor.arr_eur) return DOES_NOT_HOLD
+      if (deal.arr_eur >= predecessor.arr_eur) return doesNotHold(facts)
       return holds(
         'Renewal priced below its predecessor',
         `The renewal's ARR of ${formatEur(deal.arr_eur)} is below its predecessor's ` +
           `${formatEur(predecessor.arr_eur)}.`,
+        facts,
       )
     },
   },

@@ -803,6 +803,24 @@ export type Decision = Omit<Tables<'decisions'>, 'decision_type'> & {
 }
 
 /**
+ * A human Decision recorded earlier on the same rule, on a deal of the same
+ * account (Feature 5: Exception / Context). It keeps the ids of the Decision,
+ * its exception and its deal for citation, and the rule version the exception
+ * was raised under: a Decision under one version is not a Decision under
+ * another. Read only through `listRulePrecedents`; never stored as such.
+ */
+export type RulePrecedent = {
+  decision_id: DecisionId
+  decision_type: DecisionType
+  rationale: string
+  created_at: string
+  exception_id: ExceptionId
+  rule_version: string
+  deal_id: DealId
+  deal_name: string
+}
+
+/**
  * The columns of a new Decision on an exception. The exception and the
  * considered finding, when set, must be of the same deal (composite foreign
  * keys). `id` and `created_at` are the database's; there is no owner column
