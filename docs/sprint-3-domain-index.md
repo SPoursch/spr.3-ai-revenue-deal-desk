@@ -451,7 +451,10 @@ Schema design has since been completed and now lives in
 
 ## 10. Feature 7 — Attention / Renewal Intelligence (V1 contract)
 
-Status: **agreed V1 contract, not yet implemented.** It serves the North Star's
+Status: **agreed V1 contract, implemented** (`app/lib/deal-desk/attention.ts`,
+`listLiveExceptions` in `app/lib/db/exceptions.ts`, `/workspace/attention`),
+with the unit, integration, end-to-end and source-guard tests below. It serves
+the North Star's
 "what requires attention and why" for renewal timing, and implements
 representative behaviour 1 of §4 ("Which deals renew next quarter?") as
 deterministic only: no retrieval and no LLM.
@@ -478,16 +481,20 @@ decides or changes anything.
 - Deal facts: `renewal_date`, `notice_period_days`, `auto_renew`, `arr_eur`,
   `stage`, `name`, `account_id`.
 - Renewal lineage (U13): `predecessor_deal_id`, read in reverse to find a
-  deal's successor from the caller's deals.
+  deal's successors from the caller's deals. Nothing makes a successor
+  unique, so a deal may have several.
 - Account names.
 - Live exceptions: the caller's exceptions with status *open* or *under
-  review* across their deals (`deal_id`, `severity`), through one new
-  data-access read in `app/lib/db`.
+  review* across their deals (`deal_id`, `severity`, `status`), through one
+  new data-access read in `app/lib/db`. The result grows with the caller's
+  deals, and the hosted API caps a response's rows without an error, so the
+  read requests the exact total and throws when it receives fewer rows than
+  that — an incomplete list would undercount exceptions.
 
 ### Derived vs stored
 
 Everything Feature 7 shows is derived at request time: today's Berlin date, the
-next-quarter range, each notice deadline, every reason, the successor link,
+next-quarter range, each notice deadline, every reason, the successor links,
 exception counts and the order. Nothing is stored, and no migration is needed.
 
 ### Deterministic rules
@@ -507,7 +514,9 @@ so it can be tested; thresholds are named constants.
     shown as a gap, never read as safe.
 - **Renews next quarter:** the renewal date lies in the next-quarter range.
 - **Renewal not prepared:** a listed deal that no deal names as its
-  predecessor. A deal with a successor shows "Renewed by" that deal instead.
+  predecessor. A deal with successors shows "Renewed by" with **every**
+  successor, never just one, ordered by renewal date ascending (successors
+  without a renewal date last), then by deal name.
 - **ARR filter:** strictly `arr_eur > 50000`; exactly €50,000 is excluded.
 - **Not listed:** deals without a renewal date, and deals whose renewal date
   has passed.
@@ -521,7 +530,8 @@ so it can be tested; thresholds are named constants.
 - Sections: **Notice deadlines** (missed / due soon), **Renewing next
   quarter**, **Cannot compute**, each with its own empty state.
 - Each row: the deal (linked), account, ARR, renewal date, notice deadline,
-  auto-renew (Yes / No / Unknown), "Renewed by …" or "No renewal deal yet",
+  auto-renew (Yes / No / Unknown), "Renewed by …" listing every successor
+  (each linked) or "No renewal deal yet",
   and the count of open exceptions (linking to the deal).
 - The ARR filter is a link that toggles `?arr=over-50k`; any other value is
   ignored.
@@ -533,14 +543,17 @@ so it can be tested; thresholds are named constants.
 - **Unit (pure):** the next quarter in each of the four quarters, the year
   rollover, and Berlin-vs-UTC midnight (31 March 22:30 UTC is already 1 April
   in Berlin); notice deadline missed, due soon, beyond 30 days, zero and
-  missing notice period; the €50,000 boundary; successor detection; the
+  missing notice period; the €50,000 boundary; successor detection,
+  including several successors in their order; the
   exclusions; the order; *cannot compute* never counted as safe.
 - **Integration (hosted database, two users):** the live-exceptions read
-  returns only *open* and *under review* rows, never another user's, and a
-  failed read throws.
+  returns only *open* and *under review* rows, never another user's; a
+  failed read throws, and so does a response with fewer rows than its exact
+  count.
 - **End-to-end (Playwright, user A):** deals seeded with dates computed from
   the run date by the same pure helper; each section's membership, the stated
-  quarter range, the "Renewed by" link, the open-exception count, the
+  quarter range, every "Renewed by" link and its target, the open-exception
+  count, the
   `?arr=over-50k` filter, the empty states, the signed-out redirect, and that
   user B's deals never appear.
 - **Source guard:** the Attention page and module import nothing from

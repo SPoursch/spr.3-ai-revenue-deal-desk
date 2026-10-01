@@ -55,7 +55,10 @@ export default async function Page() {
             Every deal you are working on, with the commercial terms that matter.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <Link href="/workspace/attention" className={SECONDARY_LINK_CLASS}>
+            Attention
+          </Link>
           <Link href="/workspace/accounts" className={SECONDARY_LINK_CLASS}>
             Accounts
           </Link>

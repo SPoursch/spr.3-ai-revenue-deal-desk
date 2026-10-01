@@ -126,6 +126,15 @@ destination, **not** the Sprint 3 scope (see "Scope").
   regenerated. The Copilot never creates or changes a Decision, exception or
   provision. The end-to-end tests run it against a local fake provider
   (`tests/support/fake-openrouter.mjs`).
+- Feature 7, Attention / Renewal Intelligence V1, is built on its feature
+  branch; its contract is §10 of the domain Index. `/workspace/attention` is a
+  deterministic, read-only view (no AI, no writes, no schema change) derived
+  on every request from the caller's deals, accounts and live exceptions and
+  today's date in Europe/Berlin: missed and due-soon notice deadlines (30-day
+  window), renewals next quarter, renewals whose deadline cannot be computed,
+  every successor deal, and open-exception counts, with an optional
+  `?arr=over-50k` filter. The pure logic is `app/lib/deal-desk/attention.ts`;
+  the one new read is `listLiveExceptions` in `app/lib/db/exceptions.ts`.
 - Deployed on Vercel at https://ai-rev-deal-desk.vercel.app. Automatic Git
   deployments are disabled (`vercel.json`); production is deployed manually
   after review and the security scan.

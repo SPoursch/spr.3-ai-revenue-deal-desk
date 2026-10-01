@@ -73,6 +73,7 @@ export {
   createException,
   getException,
   listExceptions,
+  listLiveExceptions,
   updateExceptionStatus,
 } from './exceptions'
 

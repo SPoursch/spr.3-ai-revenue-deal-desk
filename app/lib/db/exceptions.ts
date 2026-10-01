@@ -1,5 +1,6 @@
 import type { Tables } from '../database.types'
 import {
+  EXCEPTION_REVIEW_STATUSES,
   isExceptionKind,
   isExceptionOrigin,
   isExceptionReviewStatus,
@@ -96,6 +97,48 @@ export async function listExceptions(dealId: DealId): Promise<DealException[]> {
   }
 
   return data.map(toDealException)
+}
+
+/** What Feature 7 (Attention) reads of a live exception: its deal, severity and status. */
+export type LiveException = Pick<DealException, 'deal_id' | 'severity' | 'status'>
+
+/**
+ * The caller's live exceptions — status 'open' or 'under_review' — across
+ * all their deals, with only the columns Attention counts (Feature 7,
+ * docs/sprint-3-domain-index.md §10). Row level security limits it to the
+ * caller's own deals; the status filter is defence in depth.
+ *
+ * The result grows with the caller's deals, and the hosted API caps how many
+ * rows one response returns without reporting an error. An incomplete list
+ * would undercount exceptions, so the exact total is requested and a short
+ * or unverifiable result throws instead of being returned. A failed read
+ * throws too; it never comes back as an empty list.
+ */
+export async function listLiveExceptions(): Promise<LiveException[]> {
+  const { data, error, count } = await getSupabaseClient()
+    .from(EXCEPTIONS_TABLE)
+    .select('deal_id, severity, status', { count: 'exact' })
+    .in('status', [...EXCEPTION_REVIEW_STATUSES])
+
+  if (error) {
+    throw new DealDeskDatabaseError('select', EXCEPTIONS_TABLE, error)
+  }
+
+  if (count === null || data.length < count) {
+    throw new Error(
+      `Live exceptions came back incomplete: ${data.length} of ${count ?? 'an unknown number of'} rows.`,
+    )
+  }
+
+  return data.map(({ deal_id, severity, status }) => {
+    if (!isExceptionSeverity(severity) || !isExceptionReviewStatus(status)) {
+      throw new Error(
+        `A live exception of deal ${deal_id} has a severity or status unknown to ` +
+          `the domain vocabulary (${severity}, ${status}); update app/lib/deal-desk/domain.ts.`,
+      )
+    }
+    return { deal_id, severity, status }
+  })
 }
 
 /** Reads one exception, or null when it does not exist or is not the caller's. */
