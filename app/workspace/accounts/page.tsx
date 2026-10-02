@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
+import { AccountMark } from '@/app/components/deal-desk/AccountMark'
 import {
   CARD_CLASS,
   EMPTY_STATE_CLASS,
@@ -20,7 +21,8 @@ import { formatNumber, NOT_SET } from '@/app/lib/deal-desk/format'
 import { getAuthenticatedUser, listAccounts, listDeals } from '@/app/lib/db'
 
 /**
- * The signed-in user's accounts, with how many deals each holds.
+ * The signed-in user's accounts, with what is recorded about each and how
+ * many deals each holds; each opens its account page.
  *
  * Both lists are read as the user, so row level security returns only their
  * own rows. The deal count is worked out here from the deal list rather than
@@ -58,7 +60,13 @@ export default async function AccountsPage() {
         ← All deals
       </Link>
       <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-[28px] font-bold tracking-tight">Accounts</h1>
+        <div>
+          <h1 className="text-[28px] font-bold tracking-tight">Accounts</h1>
+          <p className="mt-1.5 max-w-2xl text-[15px] leading-relaxed text-muted">
+            The companies your deals are with. Open one to see what is recorded about it and
+            its deals.
+          </p>
+        </div>
         <Link href="/workspace/accounts/new" className={PRIMARY_LINK_CLASS}>
           New account
         </Link>
@@ -70,64 +78,91 @@ export default async function AccountsPage() {
             Your accounts could not be loaded. Refresh the page to try again.
           </p>
         ) : accounts.length === 0 ? (
-          <section
-            aria-label="Accounts"
-            className={EMPTY_STATE_CLASS}
-          >
+          <section aria-label="Accounts" className={EMPTY_STATE_CLASS}>
             <h2 className="text-[20px] font-bold tracking-tight">No accounts yet</h2>
             <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-muted">
-              An account is the company a deal is with.
+              An account is the company a deal is with. Create one, then add its first deal.
             </p>
+            <div className="mt-6">
+              <Link href="/workspace/accounts/new" className={PRIMARY_LINK_CLASS}>
+                Create an account
+              </Link>
+            </div>
           </section>
         ) : (
-          <section aria-label="Accounts" className={`${CARD_CLASS} overflow-x-auto`}>
-            <table className={`${TABLE_CLASS} min-w-[560px]`}>
-              <thead className={TABLE_HEAD_CLASS}>
-                <tr>
-                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
-                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Region</th>
-                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Segment</th>
-                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Deals</th>
-                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {accounts.map((account) => (
-                  <tr key={account.id} className={TABLE_ROW_CLASS}>
-                    <td id={`account-${account.id}-name`} className={`${TABLE_CELL_CLASS} font-semibold`}>
-                      {account.name}
-                    </td>
-                    <td className={TABLE_CELL_CLASS}>{account.region ?? NOT_SET}</td>
-                    <td className={TABLE_CELL_CLASS}>{account.segment ?? NOT_SET}</td>
-                    <td className={TABLE_CELL_CLASS}>
-                      {formatNumber(dealCounts.get(account.id) ?? 0, 'deal')}
-                    </td>
-                    <td className={`${TABLE_CELL_CLASS} text-right`}>
-                      {/* The links are named "Edit" and "Delete"; the account
-                          they act on is announced as their description. */}
-                      <div className="flex justify-end gap-4">
-                        <Link
-                          href={`/workspace/accounts/${account.id}/edit`}
-                          aria-describedby={`account-${account.id}-name`}
-                          className={TEXT_LINK_CLASS}
-                        >
-                          Edit
-                        </Link>
-                        <Link
-                          href={`/workspace/accounts/${account.id}/delete`}
-                          aria-describedby={`account-${account.id}-name`}
-                          className={TEXT_LINK_CLASS}
-                        >
-                          Delete
-                        </Link>
-                      </div>
-                    </td>
+          <section aria-label="Accounts" className={`${CARD_CLASS} overflow-hidden`}>
+            <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-4">
+              <h2 className="text-[17px] font-semibold tracking-tight">All accounts</h2>
+              <p className="text-[13px] text-muted">{formatNumber(accounts.length, 'account')}</p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className={`${TABLE_CLASS} min-w-[760px]`}>
+                <thead className={TABLE_HEAD_CLASS}>
+                  <tr>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Industry</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Segment</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Region</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Country</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Deals</th>
+                    <th scope="col" className={TABLE_HEADER_CELL_CLASS}>
+                      <span className="sr-only">Actions</span>
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {accounts.map((account) => (
+                    <tr key={account.id} className={TABLE_ROW_CLASS}>
+                      <td className={TABLE_CELL_CLASS}>
+                        {/* The name is text, not a link: the row's actions are
+                            found by their names ("Open", "Edit", "Delete"), and
+                            an account name may contain those words. */}
+                        <div className="flex items-center gap-3">
+                          <AccountMark name={account.name} />
+                          <span id={`account-${account.id}-name`} className="font-semibold">
+                            {account.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className={TABLE_CELL_CLASS}>{account.industry ?? NOT_SET}</td>
+                      <td className={TABLE_CELL_CLASS}>{account.segment ?? NOT_SET}</td>
+                      <td className={TABLE_CELL_CLASS}>{account.region ?? NOT_SET}</td>
+                      <td className={TABLE_CELL_CLASS}>{account.country_code ?? NOT_SET}</td>
+                      <td className={`${TABLE_CELL_CLASS} whitespace-nowrap tabular-nums`}>
+                        {formatNumber(dealCounts.get(account.id) ?? 0, 'deal')}
+                      </td>
+                      <td className={`${TABLE_CELL_CLASS} text-right`}>
+                        {/* The links are named "Open", "Edit" and "Delete"; the
+                            account they act on is announced as their description. */}
+                        <div className="flex justify-end gap-4">
+                          <Link
+                            href={`/workspace/accounts/${account.id}`}
+                            aria-describedby={`account-${account.id}-name`}
+                            className={TEXT_LINK_CLASS}
+                          >
+                            Open
+                          </Link>
+                          <Link
+                            href={`/workspace/accounts/${account.id}/edit`}
+                            aria-describedby={`account-${account.id}-name`}
+                            className={TEXT_LINK_CLASS}
+                          >
+                            Edit
+                          </Link>
+                          <Link
+                            href={`/workspace/accounts/${account.id}/delete`}
+                            aria-describedby={`account-${account.id}-name`}
+                            className={TEXT_LINK_CLASS}
+                          >
+                            Delete
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </section>
         )}
       </div>
