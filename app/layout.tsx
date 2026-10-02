@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SalesBound NoteSpace",
-  description: "Notes, collections and tags for SalesBound.",
+  title: "SalesBound · AI Revenue Deal Desk",
+  description:
+    "Consolidates the commercial context of a deal, surfaces exceptions and risks, and records human decisions.",
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {

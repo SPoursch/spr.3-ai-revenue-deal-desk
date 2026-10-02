@@ -4,9 +4,9 @@ import { redirect } from 'next/navigation'
 
 import { DealList } from '@/app/components/deal-desk/DealList'
 import {
-  PAGE_CLASS,
   PRIMARY_LINK_CLASS,
   SECONDARY_LINK_CLASS,
+  WIDE_PAGE_CLASS,
 } from '@/app/components/deal-desk/styles'
 import type { Account, Deal } from '@/app/lib/deal-desk/domain'
 import { getAuthenticatedUser, listAccounts, listDeals } from '@/app/lib/db'
@@ -47,7 +47,7 @@ export default async function Page() {
   }
 
   return (
-    <main aria-label="Deal Desk" className={PAGE_CLASS}>
+    <main aria-label="Deal Desk" className={WIDE_PAGE_CLASS}>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-[28px] font-bold tracking-tight">Deals</h1>
@@ -56,12 +56,7 @@ export default async function Page() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href="/workspace/attention" className={SECONDARY_LINK_CLASS}>
-            Attention
-          </Link>
-          <Link href="/workspace/accounts" className={SECONDARY_LINK_CLASS}>
-            Accounts
-          </Link>
+          {/* Attention and Accounts are reached from the workspace navigation. */}
           <Link href="/workspace/accounts/new" className={SECONDARY_LINK_CLASS}>
             New account
           </Link>

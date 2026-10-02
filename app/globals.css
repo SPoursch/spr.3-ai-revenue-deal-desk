@@ -1,10 +1,11 @@
 @import "tailwindcss";
 
 /*
-  SalesBound NoteSpace — design tokens.
+  SalesBound — design tokens.
 
-  One light workspace with a deep navy sidebar, per the approved reference.
-  Surfaces are named by role (sidebar, pane, card, workspace) rather than by
+  The AI Revenue Deal Desk uses a light workspace with a light navigation
+  rail (the `nav` tokens). The navy `sidebar` tokens are kept for the
+  inherited sign-in and reference screens. Surfaces are named by role (sidebar, pane, card, workspace) rather than by
   shade, so a component never has to know which pane it is sitting in.
 
   The scheme is deliberately single-mode. The reference specifies one look, and
@@ -20,6 +21,13 @@
   --muted: #64748b;
   --border: #e4e8f0;
   --border-strong: #d3dae6;
+
+  /* Deal Desk shell: a light navigation rail beside white content. The
+     active item is the one place the primary blue appears in the chrome. */
+  --nav: #f8fafc;
+  --nav-hover: #eef1f6;
+  --nav-active: #e8edfb;
+  --nav-label: #7a8699;
 
   /* Deep navy sidebar */
   --sidebar: #0e1526;
@@ -50,6 +58,11 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
+
+  --color-nav: var(--nav);
+  --color-nav-hover: var(--nav-hover);
+  --color-nav-active: var(--nav-active);
+  --color-nav-label: var(--nav-label);
 
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);

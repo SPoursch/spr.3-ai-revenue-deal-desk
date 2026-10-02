@@ -5,9 +5,9 @@ import { redirect } from 'next/navigation'
 import { AttentionList } from '@/app/components/deal-desk/AttentionList'
 import {
   ERROR_CLASS,
-  PAGE_CLASS,
   SECONDARY_LINK_CLASS,
   TEXT_LINK_CLASS,
+  WIDE_PAGE_CLASS,
 } from '@/app/components/deal-desk/styles'
 import {
   ARR_FILTER_VALUE,
@@ -79,7 +79,7 @@ export default async function AttentionPage({
   const dueSoon = attention?.sections.noticeDeadlines.filter((i) => i.notice === 'due_soon') ?? []
 
   return (
-    <main aria-label="Attention" className={PAGE_CLASS}>
+    <main aria-label="Attention" className={WIDE_PAGE_CLASS}>
       <Link href="/workspace" className={`${TEXT_LINK_CLASS} text-[14px]`}>
         ← All deals
       </Link>

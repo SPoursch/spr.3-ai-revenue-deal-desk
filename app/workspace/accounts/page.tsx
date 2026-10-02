@@ -4,10 +4,16 @@ import { redirect } from 'next/navigation'
 
 import {
   CARD_CLASS,
+  EMPTY_STATE_CLASS,
   ERROR_CLASS,
-  PAGE_CLASS,
   PRIMARY_LINK_CLASS,
+  TABLE_CELL_CLASS,
+  TABLE_CLASS,
+  TABLE_HEAD_CLASS,
+  TABLE_HEADER_CELL_CLASS,
+  TABLE_ROW_CLASS,
   TEXT_LINK_CLASS,
+  WIDE_PAGE_CLASS,
 } from '@/app/components/deal-desk/styles'
 import type { Account, Deal } from '@/app/lib/deal-desk/domain'
 import { formatNumber, NOT_SET } from '@/app/lib/deal-desk/format'
@@ -47,7 +53,7 @@ export default async function AccountsPage() {
   }
 
   return (
-    <main aria-label="Accounts" className={PAGE_CLASS}>
+    <main aria-label="Accounts" className={WIDE_PAGE_CLASS}>
       <Link href="/workspace" className={`${TEXT_LINK_CLASS} text-[14px]`}>
         ← All deals
       </Link>
@@ -66,7 +72,7 @@ export default async function AccountsPage() {
         ) : accounts.length === 0 ? (
           <section
             aria-label="Accounts"
-            className="rounded-[var(--radius-card)] border border-dashed border-border-strong bg-pane px-6 py-10 text-center"
+            className={EMPTY_STATE_CLASS}
           >
             <h2 className="text-[20px] font-bold tracking-tight">No accounts yet</h2>
             <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-muted">
@@ -75,30 +81,30 @@ export default async function AccountsPage() {
           </section>
         ) : (
           <section aria-label="Accounts" className={`${CARD_CLASS} overflow-x-auto`}>
-            <table className="w-full min-w-[560px] text-left text-[14px]">
-              <thead className="border-b border-border text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+            <table className={`${TABLE_CLASS} min-w-[560px]`}>
+              <thead className={TABLE_HEAD_CLASS}>
                 <tr>
-                  <th scope="col" className="px-4 py-3">Account</th>
-                  <th scope="col" className="px-4 py-3">Region</th>
-                  <th scope="col" className="px-4 py-3">Segment</th>
-                  <th scope="col" className="px-4 py-3">Deals</th>
-                  <th scope="col" className="px-4 py-3">
+                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
+                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Region</th>
+                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Segment</th>
+                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Deals</th>
+                  <th scope="col" className={TABLE_HEADER_CELL_CLASS}>
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {accounts.map((account) => (
-                  <tr key={account.id} className="border-b border-border last:border-b-0">
-                    <td id={`account-${account.id}-name`} className="px-4 py-3 font-semibold">
+                  <tr key={account.id} className={TABLE_ROW_CLASS}>
+                    <td id={`account-${account.id}-name`} className={`${TABLE_CELL_CLASS} font-semibold`}>
                       {account.name}
                     </td>
-                    <td className="px-4 py-3">{account.region ?? NOT_SET}</td>
-                    <td className="px-4 py-3">{account.segment ?? NOT_SET}</td>
-                    <td className="px-4 py-3">
+                    <td className={TABLE_CELL_CLASS}>{account.region ?? NOT_SET}</td>
+                    <td className={TABLE_CELL_CLASS}>{account.segment ?? NOT_SET}</td>
+                    <td className={TABLE_CELL_CLASS}>
                       {formatNumber(dealCounts.get(account.id) ?? 0, 'deal')}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className={`${TABLE_CELL_CLASS} text-right`}>
                       {/* The links are named "Edit" and "Delete"; the account
                           they act on is announced as their description. */}
                       <div className="flex justify-end gap-4">
