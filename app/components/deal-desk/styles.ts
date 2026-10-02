@@ -52,7 +52,7 @@ export const FIELD_ERROR_CLASS = 'text-[13px] text-danger'
 export const TABLE_CLASS = 'w-full text-left text-[14px]'
 export const TABLE_HEAD_CLASS =
   'border-b border-border bg-workspace/60 text-[12px] font-semibold uppercase tracking-[0.08em] text-muted'
-export const TABLE_HEADER_CELL_CLASS = 'px-4 py-3'
+export const TABLE_HEADER_CELL_CLASS = 'px-4 py-3 whitespace-nowrap'
 export const TABLE_ROW_CLASS =
   'border-b border-border transition-colors last:border-b-0 hover:bg-workspace/50'
 export const TABLE_CELL_CLASS = 'px-4 py-3'
@@ -66,6 +66,7 @@ export const BADGE_CLASS =
   'inline-flex items-center rounded-full border px-2 py-0.5 text-[12px] font-semibold leading-5 whitespace-nowrap'
 
 export const BADGE_TONE = {
+  muted: 'border-border bg-pane text-muted',
   neutral: 'border-border-strong bg-workspace text-foreground',
   primary: 'border-selected-border bg-selected text-primary',
   success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
