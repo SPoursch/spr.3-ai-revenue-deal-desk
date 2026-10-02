@@ -1,4 +1,4 @@
-import type { Attention, AttentionItem } from './attention'
+import { noticeDeadline, type Attention, type AttentionItem } from './attention'
 import type { Deal, DealException } from './domain'
 
 /**
@@ -66,7 +66,43 @@ export function countExceptionsByDeal(
   return counts
 }
 
-/** Attention items by deal id, for the deal table's notice column. */
-export function attentionByDeal(attention: Attention | null): Map<string, AttentionItem> {
-  return new Map((attention?.items ?? []).map((item) => [item.deal.id, item]))
+/**
+ * Attention items by deal id, for the deal table's notice column. Null when
+ * Attention could not be built, so the column can say so rather than show
+ * every deal as if nothing were due.
+ */
+export function attentionByDeal(attention: Attention | null): Map<string, AttentionItem> | null {
+  return attention ? new Map(attention.items.map((item) => [item.deal.id, item])) : null
+}
+
+/**
+ * What the deal table's notice column shows for one deal.
+ *
+ * - `missed`, `due_soon`, `cannot_compute`: the deal is listed by Attention
+ *   for that reason; `renewed` when a renewal deal already exists.
+ * - `deadline`: not listed; its notice deadline, when it has one.
+ * - `none`: no notice deadline (no renewal date or no notice period).
+ * - `unavailable`: Attention could not be built (the exceptions read
+ *   failed), so the status is unknown. The deal's own deadline is still
+ *   given, but never shown as if it were fine.
+ */
+export type NoticeView =
+  | { status: 'missed' | 'due_soon' | 'cannot_compute'; deadline: string | null; renewed: boolean }
+  | { status: 'deadline'; deadline: string }
+  | { status: 'none' }
+  | { status: 'unavailable'; deadline: string | null }
+
+export function noticeView(
+  deal: Pick<Deal, 'id' | 'renewal_date' | 'notice_period_days'>,
+  byDeal: Map<string, AttentionItem> | null,
+): NoticeView {
+  if (byDeal === null) return { status: 'unavailable', deadline: noticeDeadline(deal) }
+
+  const item = byDeal.get(deal.id)
+  if (item && item.notice !== 'not_due') {
+    return { status: item.notice, deadline: item.noticeDeadline, renewed: item.successors.length > 0 }
+  }
+
+  const deadline = noticeDeadline(deal)
+  return deadline ? { status: 'deadline', deadline } : { status: 'none' }
 }

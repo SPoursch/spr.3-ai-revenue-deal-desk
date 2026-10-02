@@ -1,4 +1,4 @@
-import type { Quarter } from '@/app/lib/deal-desk/attention'
+import { NOTICE_WINDOW_DAYS, type Quarter } from '@/app/lib/deal-desk/attention'
 import type { DashboardSummary as Summary } from '@/app/lib/deal-desk/dashboard'
 import { formatDate, formatNumber } from '@/app/lib/deal-desk/format'
 
@@ -79,7 +79,7 @@ export function DashboardSummary({
           detail={
             attention === null
               ? UNAVAILABLE
-              : `${attention.noticeMissed} missed, ${attention.noticeDueSoon} due within 30 days${
+              : `${attention.noticeMissed} missed, ${attention.noticeDueSoon} due within ${NOTICE_WINDOW_DAYS} days${
                   attention.cannotCompute > 0
                     ? `, ${formatNumber(attention.cannotCompute, 'renewal')} without a notice period`
                     : ''

@@ -69,6 +69,7 @@ export {
   retrieveDealExcerpts,
 } from './evidence'
 
+export type { LiveException } from './exceptions'
 export {
   createException,
   getException,

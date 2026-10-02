@@ -23,9 +23,8 @@ import {
   listAccounts,
   listDeals,
   listLiveExceptions,
+  type LiveException,
 } from '@/app/lib/db'
-
-type LiveException = Awaited<ReturnType<typeof listLiveExceptions>>[number]
 
 /**
  * The Revenue Deal Desk home: the signed-in user's figures, the deals that
@@ -144,7 +143,7 @@ export default async function Page() {
         ) : null}
         <DealList
           deals={deals}
-          accounts={accounts}
+          accountNames={accountNames}
           attentionByDeal={attentionByDeal(attention)}
           exceptionsByDeal={liveExceptions === null ? null : countExceptionsByDeal(liveExceptions)}
         />

@@ -5,6 +5,7 @@ import {
   attentionByDeal,
   buildDashboardSummary,
   countExceptionsByDeal,
+  noticeView,
 } from '../../app/lib/deal-desk/dashboard'
 import type { Deal, DealException } from '../../app/lib/deal-desk/domain'
 
@@ -123,9 +124,69 @@ describe('per-deal lookups', () => {
 
   it('indexes attention items by deal, and only listed deals', () => {
     const byDeal = attentionByDeal(attention)
-    expect(byDeal.get(missed.id)?.notice).toBe('missed')
-    expect(byDeal.get(dueSoon.id)?.notice).toBe('due_soon')
-    expect(byDeal.has(quiet.id)).toBe(false)
-    expect(attentionByDeal(null).size).toBe(0)
+    expect(byDeal?.get(missed.id)?.notice).toBe('missed')
+    expect(byDeal?.get(dueSoon.id)?.notice).toBe('due_soon')
+    expect(byDeal?.has(quiet.id)).toBe(false)
+  })
+
+  it('has no index when Attention could not be built, rather than an empty one', () => {
+    expect(attentionByDeal(null)).toBeNull()
+  })
+})
+
+describe('noticeView: the deal table notice column', () => {
+  const byDeal = attentionByDeal(attention)
+
+  it('shows a missed and a due-soon deadline with the date Attention worked out', () => {
+    expect(noticeView(missed, byDeal)).toEqual({
+      status: 'missed',
+      deadline: '2026-09-01',
+      renewed: false,
+    })
+    expect(noticeView(dueSoon, byDeal)).toEqual({
+      status: 'due_soon',
+      deadline: '2026-10-15',
+      renewed: false,
+    })
+  })
+
+  it('shows a missing notice period as cannot compute', () => {
+    expect(noticeView(nextQuarter, byDeal)).toMatchObject({ status: 'cannot_compute' })
+  })
+
+  it('says when a renewal deal already exists', () => {
+    const renewal = deal('Missed renewal', { deal_type: 'renewal', predecessor_deal_id: missed.id })
+    const withRenewal = buildAttention({
+      deals: [...deals, renewal],
+      liveExceptions,
+      now: NOW,
+      overArrThreshold: false,
+    })
+    expect(noticeView(missed, attentionByDeal(withRenewal))).toMatchObject({
+      status: 'missed',
+      renewed: true,
+    })
+  })
+
+  it('shows the deadline of a deal Attention does not list, or none', () => {
+    const later = deal('Later', { renewal_date: '2028-06-30', notice_period_days: 30 })
+    const laterAttention = buildAttention({
+      deals: [later],
+      liveExceptions: [],
+      now: NOW,
+      overArrThreshold: false,
+    })
+    expect(noticeView(later, attentionByDeal(laterAttention))).toEqual({
+      status: 'deadline',
+      deadline: '2028-05-31',
+    })
+    expect(noticeView(quiet, byDeal)).toEqual({ status: 'none' })
+  })
+
+  it('is unavailable when the exceptions read failed, never a normal-looking deadline', () => {
+    // Attention could not be built, so there is no index: a missed deadline
+    // must not read as an ordinary date.
+    expect(noticeView(missed, null)).toEqual({ status: 'unavailable', deadline: '2026-09-01' })
+    expect(noticeView(quiet, null)).toEqual({ status: 'unavailable', deadline: null })
   })
 })

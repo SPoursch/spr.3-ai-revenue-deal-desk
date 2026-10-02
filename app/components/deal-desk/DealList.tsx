@@ -1,7 +1,8 @@
 import Link from 'next/link'
 
-import { noticeDeadline, type AttentionItem } from '@/app/lib/deal-desk/attention'
-import type { Account, Deal, DealStage } from '@/app/lib/deal-desk/domain'
+import type { AttentionItem } from '@/app/lib/deal-desk/attention'
+import { noticeView, type NoticeView } from '@/app/lib/deal-desk/dashboard'
+import type { Deal, DealStage } from '@/app/lib/deal-desk/domain'
 import {
   DEAL_STAGE_LABELS,
   DEAL_TYPE_LABELS,
@@ -33,9 +34,10 @@ import {
  * the genuine "no deals yet" state.
  *
  * The notice and exceptions columns are derived on the page from the
- * Attention read model and the live exceptions. `exceptionsByDeal` is null
- * when the exceptions could not be read, and the column then shows a dash
- * rather than "None".
+ * Attention read model and the live exceptions. Both maps are null when the
+ * exceptions could not be read: the exceptions column then shows a dash
+ * rather than "None", and the notice column says its status is unavailable
+ * (app/lib/deal-desk/dashboard.ts, noticeView).
  */
 
 const STAGE_TONE: Record<DealStage, keyof typeof BADGE_TONE> = {
@@ -47,21 +49,21 @@ const STAGE_TONE: Record<DealStage, keyof typeof BADGE_TONE> = {
 
 const MUTED_DASH = <span className="text-muted">—</span>
 
-function NoticeCell({ deal, item }: { deal: Deal; item: AttentionItem | undefined }) {
+function NoticeCell({ view }: { view: NoticeView }) {
   // As on the Attention page, a deal already renewed by another says so, so a
   // missed notice on it does not read as unhandled. Only the fact is shown:
   // the successor's name would make this row match a lookup by that name.
   const renewed =
-    item && item.successors.length > 0 ? (
+    'renewed' in view && view.renewed ? (
       <span className="mt-1 block text-[13px] text-muted">Renewal created</span>
     ) : null
 
-  switch (item?.notice) {
+  switch (view.status) {
     case 'missed':
       return (
         <>
           <span className={`${BADGE_CLASS} ${BADGE_TONE.danger}`}>
-            Missed {formatDate(item.noticeDeadline)}
+            Missed {formatDate(view.deadline)}
           </span>
           {renewed}
         </>
@@ -70,7 +72,7 @@ function NoticeCell({ deal, item }: { deal: Deal; item: AttentionItem | undefine
       return (
         <>
           <span className={`${BADGE_CLASS} ${BADGE_TONE.warning}`}>
-            Due {formatDate(item.noticeDeadline)}
+            Due {formatDate(view.deadline)}
           </span>
           {renewed}
         </>
@@ -82,11 +84,20 @@ function NoticeCell({ deal, item }: { deal: Deal; item: AttentionItem | undefine
           {renewed}
         </>
       )
+    case 'deadline':
+      return <>{formatDate(view.deadline)}</>
+    case 'none':
+      return MUTED_DASH
+    case 'unavailable':
+      // The exceptions read failed, so Attention could not be built: the
+      // deadline is shown, but its status is not known and must not look fine.
+      return (
+        <>
+          {view.deadline ? formatDate(view.deadline) : MUTED_DASH}
+          <span className="mt-1 block text-[13px] text-danger">Status unavailable</span>
+        </>
+      )
   }
-
-  // Not listed by Attention: show the deadline itself, when there is one.
-  const deadline = noticeDeadline(deal)
-  return deadline ? <>{formatDate(deadline)}</> : MUTED_DASH
 }
 
 function ExceptionsCell({ count }: { count: number | null }) {
@@ -152,13 +163,14 @@ function EmptyDeals({ hasAccounts }: { hasAccounts: boolean }) {
 
 export function DealList({
   deals,
-  accounts,
+  accountNames,
   attentionByDeal,
   exceptionsByDeal,
 }: {
   deals: Deal[] | null
-  accounts: Account[]
-  attentionByDeal: Map<string, AttentionItem>
+  /** The caller's account names by id, built once by the page. */
+  accountNames: Map<string, string>
+  attentionByDeal: Map<string, AttentionItem> | null
   exceptionsByDeal: Map<string, number> | null
 }) {
   if (deals === null) {
@@ -170,10 +182,8 @@ export function DealList({
   }
 
   if (deals.length === 0) {
-    return <EmptyDeals hasAccounts={accounts.length > 0} />
+    return <EmptyDeals hasAccounts={accountNames.size > 0} />
   }
-
-  const accountNames = new Map(accounts.map((account) => [account.id, account.name]))
 
   return (
     // The region keeps the name "Deals" (the deal list's contract); the card
@@ -225,7 +235,7 @@ export function DealList({
                   {formatDate(deal.renewal_date)}
                 </td>
                 <td className={`${TABLE_CELL_CLASS} tabular-nums`}>
-                  <NoticeCell deal={deal} item={attentionByDeal.get(deal.id)} />
+                  <NoticeCell view={noticeView(deal, attentionByDeal)} />
                 </td>
                 <td className={TABLE_CELL_CLASS}>
                   <ExceptionsCell
