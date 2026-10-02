@@ -40,7 +40,8 @@ import {
  * (app/lib/deal-desk/dashboard.ts, noticeView).
  */
 
-const STAGE_TONE: Record<DealStage, keyof typeof BADGE_TONE> = {
+/** Each stage's badge tone; shared with the deal page's header. */
+export const STAGE_TONE: Record<DealStage, keyof typeof BADGE_TONE> = {
   discovery: 'neutral',
   negotiation: 'primary',
   contracting: 'primary',
@@ -49,7 +50,8 @@ const STAGE_TONE: Record<DealStage, keyof typeof BADGE_TONE> = {
 
 const MUTED_DASH = <span className="text-muted">—</span>
 
-function NoticeCell({ view }: { view: NoticeView }) {
+/** A deal's notice status (noticeView); shared with the deal page's key facts. */
+export function NoticeCell({ view }: { view: NoticeView }) {
   // As on the Attention page, a deal already renewed by another says so, so a
   // missed notice on it does not read as unhandled. Only the fact is shown:
   // the successor's name would make this row match a lookup by that name.
