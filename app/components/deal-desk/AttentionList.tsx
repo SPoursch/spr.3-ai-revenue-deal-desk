@@ -3,7 +3,15 @@ import Link from 'next/link'
 import type { AttentionItem } from '@/app/lib/deal-desk/attention'
 import { formatBoolean, formatDate, formatEur } from '@/app/lib/deal-desk/format'
 
-import { CARD_CLASS, TEXT_LINK_CLASS } from './styles'
+import {
+  CARD_CLASS,
+  TABLE_CELL_CLASS,
+  TABLE_CLASS,
+  TABLE_HEAD_CLASS,
+  TABLE_HEADER_CELL_CLASS,
+  TABLE_ROW_CLASS,
+  TEXT_LINK_CLASS,
+} from './styles'
 
 /**
  * One section's deals on /workspace/attention (Feature 7,
@@ -55,39 +63,39 @@ export function AttentionList({
 
   return (
     <div className={`${CARD_CLASS} mt-3 overflow-x-auto`}>
-      <table aria-label={label} className="w-full min-w-[880px] text-left text-[14px]">
-        <thead className="border-b border-border text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">
+      <table aria-label={label} className={`${TABLE_CLASS} min-w-[880px]`}>
+        <thead className={TABLE_HEAD_CLASS}>
           <tr>
-            <th scope="col" className="px-4 py-3">Deal</th>
-            <th scope="col" className="px-4 py-3">Account</th>
-            <th scope="col" className="px-4 py-3 text-right">ARR</th>
-            <th scope="col" className="px-4 py-3">Renewal date</th>
-            <th scope="col" className="px-4 py-3">Notice deadline</th>
-            <th scope="col" className="px-4 py-3">Auto-renew</th>
-            <th scope="col" className="px-4 py-3">Renewal deal</th>
-            <th scope="col" className="px-4 py-3 text-right">Open exceptions</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Deal</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
+            <th scope="col" className={`${TABLE_HEADER_CELL_CLASS} text-right`}>ARR</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Renewal date</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Notice deadline</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Auto-renew</th>
+            <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Renewal deal</th>
+            <th scope="col" className={`${TABLE_HEADER_CELL_CLASS} text-right`}>Open exceptions</th>
           </tr>
         </thead>
         <tbody>
           {items.map((item) => (
-            <tr key={item.deal.id} className="border-b border-border last:border-b-0">
-              <td className="px-4 py-3">
+            <tr key={item.deal.id} className={TABLE_ROW_CLASS}>
+              <td className={TABLE_CELL_CLASS}>
                 <Link href={`/workspace/deals/${item.deal.id}`} className={TEXT_LINK_CLASS}>
                   {item.deal.name}
                 </Link>
               </td>
-              <td className="px-4 py-3">
+              <td className={TABLE_CELL_CLASS}>
                 {accountNames.get(item.deal.account_id) ?? 'Unknown account'}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums">{formatEur(item.deal.arr_eur)}</td>
-              <td className="px-4 py-3">{formatDate(item.deal.renewal_date)}</td>
-              <td className="px-4 py-3">
+              <td className={`${TABLE_CELL_CLASS} text-right tabular-nums`}>{formatEur(item.deal.arr_eur)}</td>
+              <td className={TABLE_CELL_CLASS}>{formatDate(item.deal.renewal_date)}</td>
+              <td className={TABLE_CELL_CLASS}>
                 <NoticeCell item={item} />
               </td>
-              <td className="px-4 py-3">
+              <td className={TABLE_CELL_CLASS}>
                 {item.deal.auto_renew === null ? 'Unknown' : formatBoolean(item.deal.auto_renew)}
               </td>
-              <td className="px-4 py-3">
+              <td className={TABLE_CELL_CLASS}>
                 {item.successors.length > 0 ? (
                   <>
                     Renewed by{' '}
@@ -104,7 +112,7 @@ export function AttentionList({
                   <span className="text-muted">No renewal deal yet</span>
                 )}
               </td>
-              <td className="px-4 py-3 text-right tabular-nums">
+              <td className={`${TABLE_CELL_CLASS} text-right tabular-nums`}>
                 {item.openExceptions > 0 ? (
                   <Link href={`/workspace/deals/${item.deal.id}`} className={TEXT_LINK_CLASS}>
                     {item.openExceptions} open
