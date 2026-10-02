@@ -166,12 +166,21 @@ export function DealList({
   accountNames,
   attentionByDeal,
   exceptionsByDeal,
+  heading = 'All deals',
+  showAccount = true,
 }: {
   deals: Deal[] | null
   /** The caller's account names by id, built once by the page. */
   accountNames: Map<string, string>
   attentionByDeal: Map<string, AttentionItem> | null
   exceptionsByDeal: Map<string, number> | null
+  /** The card's visible heading; the region's name stays "Deals". */
+  heading?: string
+  /**
+   * The Account column. Off on an account's own page, where every row would
+   * repeat it. On /workspace it stays, so the columns keep their order.
+   */
+  showAccount?: boolean
 }) {
   if (deals === null) {
     return (
@@ -186,11 +195,12 @@ export function DealList({
   }
 
   return (
-    // The region keeps the name "Deals" (the deal list's contract); the card
-    // heading reads "All deals" so it does not repeat the page's h1.
+    // The region keeps the name "Deals" (the deal list's contract); on
+    // /workspace the card heading reads "All deals" so it does not repeat the
+    // page's h1.
     <section aria-label="Deals" className={`${CARD_CLASS} overflow-hidden`}>
       <div className="flex items-baseline justify-between gap-4 border-b border-border px-5 py-4">
-        <h2 className="text-[17px] font-semibold tracking-tight">All deals</h2>
+        <h2 className="text-[17px] font-semibold tracking-tight">{heading}</h2>
         <p className="text-[13px] text-muted">
           {formatNumber(deals.length, 'deal')}, by renewal date
         </p>
@@ -200,7 +210,9 @@ export function DealList({
           <thead className={TABLE_HEAD_CLASS}>
             <tr>
               <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Deal</th>
-              <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
+              {showAccount ? (
+                <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Account</th>
+              ) : null}
               <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Type</th>
               <th scope="col" className={TABLE_HEADER_CELL_CLASS}>Stage</th>
               <th scope="col" className={`${TABLE_HEADER_CELL_CLASS} text-right`}>ARR</th>
@@ -217,9 +229,11 @@ export function DealList({
                     {deal.name}
                   </Link>
                 </td>
-                <td className={TABLE_CELL_CLASS}>
-                  {accountNames.get(deal.account_id) ?? 'Unknown account'}
-                </td>
+                {showAccount ? (
+                  <td className={TABLE_CELL_CLASS}>
+                    {accountNames.get(deal.account_id) ?? 'Unknown account'}
+                  </td>
+                ) : null}
                 <td className={`${TABLE_CELL_CLASS} whitespace-nowrap text-muted`}>
                   {DEAL_TYPE_LABELS[deal.deal_type]}
                 </td>
